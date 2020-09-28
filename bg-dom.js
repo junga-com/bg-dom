@@ -1,4 +1,4 @@
-//export * from 'redom'
+export {mount,unmount} from 'redom'
 export * from './Disposables'
 export * from './bg-promise'
 export * from './parameters'

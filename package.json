@@ -9,6 +9,10 @@
     "redom",
     "ui",
     "components",
+    "bgcomponents",
+    "dom",
+    "framework",
+    "library",
     "style-guide",
     "bg"
   ],
