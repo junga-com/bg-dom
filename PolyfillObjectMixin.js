@@ -213,6 +213,11 @@ export class PolyfillObjectMixin {
 
 PolyfillObjectMixin.States = States;
 
-if (typeof global.bg == 'undefined') global.bg = Object.create(null)
-PolyfillObjectMixin.instances = new Map();
-global.bg.PolyfillObjectMixin = PolyfillObjectMixin;
+console.log('global.Poly b4', {bg:global.bg, module});
+
+global.bg =                               (typeof global.bg                               != 'undefined') ?global.bg                               : Object.create(null);
+global.bg.PolyfillObjectMixin =           (typeof global.bg.PolyfillObjectMixin           != 'undefined') ?global.bg.PolyfillObjectMixin           : PolyfillObjectMixin;
+global.bg.PolyfillObjectMixin.instances = (typeof global.bg.PolyfillObjectMixin.instances != 'undefined') ?global.bg.PolyfillObjectMixin.instances : new Map();
+PolyfillObjectMixin.instances = global.bg.PolyfillObjectMixin.instances;
+
+console.log('global.Poly after', {bg:global.bg, module});
