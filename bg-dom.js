@@ -1,3 +1,7 @@
+import {StartPackage} from './GlobalServices'
+export * from './GlobalServices'
+StartPackage();
+
 export {mount,unmount} from 'redom'
 export * from './Disposables'
 export * from './bg-promise'
@@ -13,3 +17,5 @@ export * from './panels'
 export * from './miscellaneous'
 export * from './examples'
 export * from './BGStylesheet'
+//packageDesc = require('./package.json');
+//export version = {[packageDesc.name]:{version:packageDesc.version}}
