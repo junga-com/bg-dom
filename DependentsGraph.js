@@ -452,12 +452,11 @@ export class DependentsGraph {
 	}
 }
 
+// since DependentsGraph is a very common api, we create a global shortcut so that we can access it more tersely;
 console.log('global.deps b4', {deps:global.deps, bg:global.bg, module});
-global.deps = (typeof global.deps == 'undefined')?global.deps : new DependentsGraph();
+global.deps = (typeof global.deps != 'undefined')?global.deps : new DependentsGraph();
 console.log('global.deps after', global.deps);
 
 DependentsGraph.instance = global.deps;
 global.bg =                 (typeof global.bg                 != 'undefined') ?global.bg                 : Object.create(null)
 global.bg.DependentsGraph = (typeof global.bg.DependentsGraph != 'undefined') ?global.bg.DependentsGraph : DependentsGraph
-
-// since DependentsGraph is a very common api, we create a global shortcut so that we can access it more tersely;
