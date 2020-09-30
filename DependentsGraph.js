@@ -164,6 +164,7 @@ export class DependentsGraph {
 	constructor() {
 		this.nodes = new Map();
 		this.cnodeClasses = [];
+		this.cnodeClassesExistsCheck = new Set();
 		this.fireCount = 0;
 		this.fAll = Symbol('fAll');
 	}
@@ -173,7 +174,10 @@ export class DependentsGraph {
 	}
 
 	registerCNodeClass(cnodeClass) {
-		this.cnodeClasses.push(cnodeClass);
+		if (!this.cnodeClassesExistsCheck.has(cnodeClass.name)) {
+			this.cnodeClassesExistsCheck.add(cnodeClass.name);
+			this.cnodeClasses.push(cnodeClass);
+		}
 	}
 
 	getONode(obj, getMode=GetMode.CreateIfNeeded) {
