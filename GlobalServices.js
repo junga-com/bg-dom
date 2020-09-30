@@ -13,7 +13,7 @@ class PkgInfo {
 			//const pkgJson = require(mPath+'/package.json');
 			const pkgJson = json5.parse(fs.readFileSync(mPath+'/package.json'));
 			pkgJson.modulePath = mPath;
-			if (!new RegExp('/node_modules/'+pkgJson.name+'$').test(pkgJson.modulePath))
+			if (!new RegExp('/(node_modules|packages)/'+pkgJson.name+'$').test(pkgJson.modulePath))
 				pkgJson.version+='-dev';
 
 			var pkgRecord = bg.pkgInfo[pkgJson.name];
@@ -61,7 +61,7 @@ export function RegisterPackage(moduleFilename) {
 }
 
 
-const sGblVersionInfo = Symbol('sGblVersionInfo');
+const sGblVersionInfo = Symbol.for('sGblVersionInfo');
 
 // This function allows you to install a global variable safely.
 // The global or window object is shared accross all modules. Even the same npm module may exist in multiple contexts where the top
