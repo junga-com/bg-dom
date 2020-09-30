@@ -28,6 +28,8 @@
   "homepage": "https://github.com/junga-com/bg-dom#readme",
   "dependencies": {
     "esm": "^3.2.25",
+    "json5": "^2.1.3",
+    "node-version-compare": "^1.0.3",
     "redom": "^3.24.2"
   }
 }

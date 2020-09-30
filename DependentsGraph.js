@@ -454,15 +454,7 @@ export class DependentsGraph {
 }
 
 // since DependentsGraph is a very common api, we create a global shortcut so that we can access it more tersely;
-//global.deps               = (typeof global.deps               != 'undefined')?global.deps               : new DependentsGraph();
-RegisterGlobalService(null, 'deps',()=>{return new DependentsGraph()});
-//global.bg =                 (typeof global.bg                 != 'undefined') ?global.bg                 : Object.create(null)
-RegisterGlobalService(null, 'bg',  ()=>{return Object.create(null)});
-
+RegisterGlobalService('1.0.0', null,      'deps',             ()=>{return new DependentsGraph()});
+RegisterGlobalService('1.0.0', null,      'bg',               ()=>{return Object.create(null)});
+RegisterGlobalService('1.0.0', global.bg, 'DependentsGraph',  ()=>{return DependentsGraph});
 DependentsGraph.instance = global.deps;
-//global.bg.DependentsGraph = (typeof global.bg.DependentsGraph != 'undefined') ?global.bg.DependentsGraph : DependentsGraph
-RegisterGlobalService(global.bg, 'DependentsGraph',  ()=>{return DependentsGraph});
-
-console.log('global.deps', global.deps);
-console.log('global.bg',   global.bg);
-console.log('global.bg.DependentsGraph', global.bg.DependentsGraph);
