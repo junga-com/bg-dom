@@ -109,6 +109,7 @@ export class ToggleButton extends Button {
 		this.lastFocused && this.lastFocused.focus(); this.lastFocused=null;
 		this.el.classList.toggle("selected");
 		this.onActivatedCB && this.onActivatedCB(this.isPressed(), this);
+		this.onStateChange(this.isPressed());
 	}
 	isPressed() {
 		return this.el.classList.contains("selected");
@@ -116,6 +117,8 @@ export class ToggleButton extends Button {
 	setPressedState(state) {
 		this.el.classList.toggle("selected", state);
 	}
+
+	onStateChange(newState) {}
 }
 
 
