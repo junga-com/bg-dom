@@ -4,6 +4,13 @@
 // disposables = new Disposables() member and add any function or object that has a dispose or destroy method to the it. Then in your
 // class's destroy or dispose method, call this.disposables.dispose() or Disposables.DisposeOfMembers(this).
 export class Disposables {
+	static DisposeOfObject(obj) {
+		if (obj && typeof obj == 'object' && typeof obj.dispose == 'function') {
+			obj.dispose();
+		} else if (obj && typeof obj == 'object' && typeof obj.destroy == 'function') {
+			obj.destroy();
+		}
+	}
 	// this iterates the direct members of <obj> and for each member that is an 'object' type and has a dispose or destroy method
 	// it calls that method.  If abused, this could become inefficient, iterating every object and nested object too frequently.
 	// It should be used when the object is a high level one that does not get created and destroyed many times within a user
@@ -12,11 +19,11 @@ export class Disposables {
 		for (const name of Object.getOwnPropertyNames(obj)) {
 			const prop = obj[name];
 			if (prop && typeof prop == 'object' && typeof prop.dispose == 'function') {
-				//console.log(`!!!found ${name} to dispose`);
+				//console.log(`found ${name} to dispose`);
 				prop.dispose();
 
 			} else if (prop && typeof prop == 'object' && typeof prop.destroy == 'function') {
-				//console.log(`!!!found ${name} to destroy`);
+				//console.log(`found ${name} to destroy`);
 				prop.destroy();
 			}
 		}
@@ -57,5 +64,30 @@ export class Disposables {
 		while (cb = this.cbs.shift()) {
 			cb();
 		}
+	}
+}
+
+
+// This is a map that will call its element's dispose/destroy methods when they are removed from the map eithr directly or by
+// replacement with a new vaule
+export class DisposableMap extends Map {
+	dispose() {
+		const values=new Array(this.size);
+		var count=0;
+		for (const [k,v] of this)
+			values[count++]=v
+		this.clear();
+		for (const value of values)
+			Disposables.DisposeOfObject(value);
+	}
+	set(key, value) {
+		const prevValue = this.get(key);
+		Disposables.DisposeOfObject(prevValue);
+		value && super.set(key, value);
+	}
+	delete(key) {
+		const prevValue = this.get(key);
+		super.delete(key);
+		Disposables.DisposeOfObject(prevValue);
 	}
 }

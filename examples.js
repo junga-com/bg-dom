@@ -7,7 +7,7 @@ let exampleData = {
 	example1: `
 		 new Panel("example1:.BGExample", [
 		 	new PanelHeader(" Example 1"),
-		 	"Woo hoo!!!"
+		 	"Woo hoo!"
 		 ]);
 	`,
 
@@ -17,7 +17,7 @@ let exampleData = {
 		 	class: "BGExample",
 		 	children: [
 		 		new PanelHeader(" Example 1"),
-		 		"Woo hoo!!!"
+		 		"Woo hoo!"
 		 	]
 		 });
 	`,

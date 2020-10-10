@@ -384,6 +384,7 @@ export class DependentsGraph {
 	fire($obj1, ...p) {
 		const [obj1, channel] = this._normalizeSourceObject($obj1);
 		const onode1 = this.getONode(obj1, GetMode.NoCreate);
+		const toFire = [];
 		if (onode1) {
 			const cnode1 = onode1.getCNode(channel, GetMode.NoCreate);
 			if (cnode1) {
@@ -392,12 +393,23 @@ export class DependentsGraph {
 				} else {
 					for (const [obj2,propagationFn] of cnode1.targets) {
 						this.fireCount++;
-						propagationFn(...p)
+						toFire.push(propagationFn);
 					}
 					onode1.releaseCNode(cnode1);
 				}
 			}
 			this.releaseONode(onode1);
+		}
+		const results = [];
+		for (const propFn of toFire) {
+			const result = propFn(...p);
+			if (result)
+				results.push(result);
+		}
+		if (results.length==1) {
+			return results[0];
+		} else if (results.length>1) {
+			return results;
 		}
 	}
 
@@ -436,7 +448,7 @@ export class DependentsGraph {
 	//               the timeout will be what ever the other properties result in.
 	//    .onDestroy : (function) this function will be invoked when the relationship is removed.
 	createPropagationFn(cnode1, onode2, params) {
-		var fn = (...p)=>{this.defaultPropagationFn({obj1:cnode1.obj1,obj2:onode2.obj,defaultTargetMethodName:cnode1.defaultTargetMethodName}, ...p)};
+		var fn = (...p)=>{return this.defaultPropagationFn({obj1:cnode1.obj1,obj2:onode2.obj,defaultTargetMethodName:cnode1.defaultTargetMethodName}, ...p)};
 		if (params) switch (typeof params) {
 			case 'function' : return params;
 			case 'object'   :

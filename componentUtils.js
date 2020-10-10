@@ -215,16 +215,17 @@ const knownStyleProperties = {
 
 
 
-// Interpret and normalize information about a component being created that has come from multiple levels in the type hierarchy.
+// Interpret and normalize an arbitrarily long list of parameters that describe the creation of a component.
 // This supports a very flexible yet reasonably efficient pattern of providing information from multiple places using a compact
-// easy to use syntax.
+// easy to use syntax. Typically the parameter list is the result of the constructor(...p){super(<...>, ...p)} calls in a multilevel
+// hierarchy.
 //
 // Levels:
-//    user contruction params :(new SomeComponent(...))
-//    componentClass1         :(added in class's ctor -- class being constructed)
-//    componentClass2         :(added in class's ctor -- first super class)
-//    componentClass...       :(added in class's ctor -- all the super classes in the hierarchy chain)
-//    Component class         :(added in Component's ctor -- most super class invokes us to collect all the information)
+//    user contruction params :(new SomeComponent(p1,p2))
+//    componentClassA         :super (cA1,cA2, ...p, cA3)   (added in class's ctor -- class being constructed)
+//    componentClassB         :super (cB1, ...p, cB2)       (added in class's ctor -- first super class)
+//    componentClass...       :...                          (added in class's ctor -- all the super classes in the hierarchy chain)
+//    Component class         :params==[cB1, cA1,cA2, p1,p2, cA3, cB2] The last class gets the whole list which is sends to this function
 //
 //    The concept of 'levels' will be used to describe the functionality of ComponentParams. Each level is a place that can provide
 //    information about how the component should be constructed. This is true in all class hierarchies but the special nature of
@@ -232,31 +233,50 @@ const knownStyleProperties = {
 //
 //    Each level can add its own information to the parameter list that it received from its caller and pass the combined result
 //    onto its base class. The last base class (which may or may not be Component) uses ComponentParams to reduce the arbitrarily
-//    long parameter list into one normalized set of information that is required to create a new DOM Node. This refined information
-//    is then available in each of the component class's constructors in the hierarchy.
+//    long parameter list into one normalized set of information that is required to create a new DOM Node and possible a tree of
+//    children underneath it. The Component class puts the resulting set of information in the this.componentParams property so that
+//    it is available in each of the hierarchy's class's constructors after the super() call.
 //
 //    Information earlier in the parameter list (more to the left) will supercede information later in the list (more to the right).
 //    with the same name. A component class can use this to decide whether the information it provides will be a default value that
 //    the level above it can override or whether it is a mandatory value that can not be overridden.
 //
-// Passing Information as Named vs Unnamed (positional) :
+// Passing Information as Named vs Unnamed (type based) :
 //    No parameter passed to the ComponentParams constructor is identified by its position so there are really no positional parameters.
-//    However, any of the supported unamed parameters can be specified in any order and can be repeated any number of times so there
-//    are an arbitrarily large number of what is typically called 'positional parameters'. Named parameters are implemented by passing
-//    an object whose keys are the names of the parameters. Some of the objects in the positional parameter list will be identified
-//    and used this way to pass explicitly named parameters. Amoung these named parameter objects, several other types of
-//    'positional parameters' are supported and identified by their types instead of their position.
+//    Parameters that are passed directly to this constructor or as elements in an array parameter are interpretted by examining their
+//    type and structure (ducktyping) instead of by the position that they occupy in the list of parameters.
 //
-//    Repeated params of the same logical type ocur when derived component classes pass through params from their constructor onto
-//    their base component super class constructor. Each level can add its own parameters of any of the supported logical types
-//    and sometimes will add two -- one on the left to contain mandatory value(s) and another on the right to conatin default value(s).
+//    Named parameters are implemented by passing an object whose keys are the names of the parameters. Some of the objects in the
+//    parameter list will be identified and used this way to pass explicitly named parameters. Other objects will be interpretted
+//    differently if that match the ducktyping of another unamed parameter type (in particular content objects).
 //
-//    This support avoids each derived class in the component hierarchy from having to handle complicated merging of parameters
-//    themselves. Not only would that make it harder to write and maintain components, but also each component might do it a little
-//    differently making the hierarchy as a whole less consistent and harder to use.
+//    The reason unamed parameter types are supported is to provide a more user friendly, compact syntax for creating components.
 //
-//    The reason other parameter types besides named parameter objects are supported is to provide a more user friendly, compact
-//    syntax for creating components.
+// Unamed Params (type based):
+// Note that strings and arrays are treated differently based on whether they appear in the first level of parameters passed into
+// us or whether they are elements in a nested array.
+// Top Level Type Interpretation
+//   'string' : are interpretted as <tagIDClasses>
+//              Note that strings inside Arrays are interpreted differently.
+//
+//   'array'  : each element inside the array is interpretted as child <content>.
+//              Element Types
+//                   'object'w/el       as <content> (same as first level, see below)
+//                   'object'w/nodeType as <content> (same as first level, see below)
+//                   'string' :         as <content> either innerHTML content or plain text determined by whether it begins with '<'
+//                   'array'  :         as a parameter list that will be used to dynamically construct some component type.
+//                              note: that second level arrays are interpretted differently than the first level
+//
+//    'object'w/el : objects with a property named 'el' are interpreted as child <content> to be added under the component being created
+//
+//    'object'w/nodeType : objects with a property named 'nodeType' are interpreted as child <content> to be added under the component being created
+//
+//    'object'(other) : are interpretted as an <options> object where the keys any of the names listed in the Mamed Parameters Section
+//
+//    'function' : are interpretted as an unnamedCB and added a composite this.unnamedCB[]. Its not uncommon
+//          for a component type to support a callback that is unabiguous in the context of that component type so it can appear
+//          anywhere in the parameter list and still be understood. Multiple levels could provide a callback in which case its
+//          reasonable for the derived class to invoke each in turn when firing its event.
 //
 // Named (Logical) Parameters :
 // These are the named 'parameters' that can be explicitly specified in a named parameter object that apprears in the
@@ -269,14 +289,22 @@ const knownStyleProperties = {
 //    label         :string     : text that will be set as the direct content of this node. If is starts with an html tag (<div>) it will parsed as html
 //    content       :<multiple> : innerHTML specified in multiple ways -- text, html, DOM node, Component instance, or an array of multiple of those
 //    tagIDClasses  :string(aggregate): combined [<name>:][<tagName>][#<idName>][.<class>[.<class>...]][ <contentTestOrHTML>]
-//    optParams     :object     : named parameters introduced by a component class for features it implements (as opposed to passed through to the DOM)
-//    paramNames    :stringSet  : space separated list of optional parameter names that can be specified in the options object
-//    props         :object     : Attributes / Properties to be set in the created DOM node
-//    styles        :object     : css styles to be set in the created DOM node
 //    unnamedCB     :function   : a function that will be registered in the component's default callback event.
-//    <paramNames>  :<any>      : in the options object, any name listed in 'paramNames' will be interpreted as if they were specified within 'optParams'
-//    <knownStyles> :string     : in the options object, any name listed in knownStyleProperties will be interpreted as if it were specified inside 'styles'
-//    <unknownNames>:string     : in the options object, any name that does not match any known name will be interpreted as if it were specified inside 'props'
+//    nameForCB     :string     : if set, unamed function type params will be put in optParam.<nameForCB> instead of unnamedCB
+//    Constructor   :classFn    : this is used for dynamic construction of bgComponents. Even new Component(...) will honor this
+//                                and return an instance of Constructor class.
+//    defaultConstructor:classFn: This will cause ay dynamic construction of child content, either in these params or in later calls
+//                                to component.mount(...) to be created with this classFn if a Constructor is not explicitly given
+//    paramNames    :stringSet  : space separated list of parameter names that extend this list of named parameters. They will be placed in the optParams sub-object
+//   SUB-OBJECT CONTAINERS
+//    optParams     :object     : named parameters introduced by a component class for features it implements (as opposed to DOM recognized properties)
+//                                keys in this sub-object can be any name in paramNames
+//    props         :object     : Attributes / Properties to be set in the created DOM node. Keys of this object can be any property supportted by the DOM
+//    styles        :object     : css styles to be set in the created DOM node. Keys of this object can be any style property name
+//   OTHER NAMES
+//    <paramNames>  :<any>      : any name listed in 'paramNames' will be recognized as an extended named property and put in 'optParams'
+//    <knownStyles> :string     : any name listed in the knownStyleProperties map will be recognized as a style property and put in 'styles'
+//    <unknownNames>:string     : any name that does not match any known name will be interpreted as a DOM propert and put in 'props'
 //
 // Flattening the Property, Styles, and optParam Namespaces:
 //    An important way to make the syntax to build components more compact is the support to specify any (name,value) pair at the
@@ -298,26 +326,8 @@ const knownStyleProperties = {
 //    it's base classes from setting it in the DOM node or doing special processing on that value. By doing this, if the value is
 //    specified at any level, it will be moved to the optParams sub-object where the component author can decide what to do with it.
 //
-// Unamed Params (positional):
-// Note that a derived component class can define its own required or optional positional constructor params for users of that
-// class to follow. After its own positional params, it must allow an arbitrary number of these Component class params in any order.
-//   <tagIDClasses> : string parameters that reach this ComponentParams are always interpretted as a 'tagIDClasses'. Users can use
-//          this to tersely specify any combination of <name>, <tagName>, <idName>, <class>, or <label> instead of explicitly
-//          putting them inside a named parameter object.
-//
-//    <content>  : Arrays and also Objects with either an 'el' or 'nodeType' property are interpretted as childContent that will
-//          be added to the new component instance.
-//
-//    <options>  : any object param that does not match the content conditions are interpretted as a named parameter object. The
-//          keys of these objects can contain any of the names listed in the Named Parameter Section.
-//
-//    <unnamedCB> : any function parameter will be added to this.unnamedCB[] where a derived class can access it. Its not uncommon
-//          for a component type to support a callback that is unabiguous in the context of that component type so it can appear
-//          anywhere in the parameter list and still be understood. Multiple levels could provide a callback in which case its
-//          reasonable for the derived class to invoke each in turn when firing its event.
-//
 // Combining Knowledge Provided By Multiple Levels:
-//   Each level in the hirarchy gets a chance to specify any of the information so repeated information will be inevitable. The process
+//   Each level in the hierarchy gets a chance to specify any of the information so repeated information will be inevitable. The process
 //   of combining multiple sets of possibly overlapping information into one consistent set will be refered to in this class as 'reducing'.
 //   i.e. we are reducing multiple sets into one set.
 //
@@ -326,7 +336,7 @@ const knownStyleProperties = {
 //   named data.
 //
 //   A particular class in the component hierarchy can use this behavior to provide both default values that can be overriden by
-//   things that use it or mandatory values that can not be overridden (by default). Parametes on the left override those on the right.
+//   things that use it or mandatory values that can not be overridden (by default). Parameters on the left override those on the right.
 //
 //   All named data except these are treated as single valued.
 //     class : multivalued : classes are combined in a space separated list. If any className is prefixed with a '!' character, it
@@ -342,10 +352,22 @@ export class ComponentParams {
 	// params can be any number of the following in any order
 	//   tagIDClasses:string, options:object, callback:function, domEl:object(w/nodeType), component:object(w/el), or content:array
 	constructor(...params) {
+		// first, make a quick pass to look for an instance of ourselves and return it if found instead of creating a new instance.
+		// This supports dynamic construction of Components where the class of the component is embedded in the parameters then we
+		// call the constructor passing in the already parsed ComponentParams. This avoids parsing ComponentParams twice. The
+		// intermediate classes in the hierarchy will blindly add additional params in their super() calls so the ComponentParam
+		// object may be in the middle of a list of params. we dont wnat to burden the component author with checking.
+		for (var i=0; i<params.length; i++)
+			if (params[i] instanceof ComponentParams)
+				return params[i];
+
 		// single valued params are defined as undefined and combinable params are initialized to their empty type
 		this.tagName       = undefined;
 		this.name          = undefined;
 		this.idName        = undefined;
+		this.nameForCB     = undefined;
+		this.Constructor   = undefined;        // added to support dynamic construction
+		this.defaultConstructor = undefined;   // added to support default type of child content
 		this.className     = '';
 		this.content       = [];
 		this.optParams     = {};
@@ -356,7 +378,7 @@ export class ComponentParams {
 		this.lockedParams = {};
 		this.mapOfOptParamNames = {};
 
-		// first, make a quick pass to assemble all the paramNames so that we can correctly classify optional parameters declared
+		// next, make another quick pass to assemble all the paramNames so that we can correctly classify optional parameters declared
 		// by all the component classes in the hierarchy. paramNames can only be set in options objects.
 		for (var i=0; i<params.length; i++) {
 			if (params[i] && typeof params[i] == 'object' && typeof params[i].paramNames == 'string')
@@ -372,12 +394,23 @@ export class ComponentParams {
 		for (var i=0; i<params.length; i++) if (params[i]) {
 			switch (typeof params[i]) {
 				case 'object':
-					// detect any content type object
-					if (Array.isArray(params[i]) || ('nodeType' in params[i]) || ('el' in params[i]))
+					// arrays in the param list are interpretted as arrays of content
+					if (Array.isArray(params[i])) {
 						// it would make sense to spread the array into the the content array except we are appending in the wrong
 						// direction. Its more efficient to append in the wrong direction and then in the end, reverse the array.
+						// TODO:344 interpret the second level arrays as bgComponent construction params
+						// 2020-10 changed this to spread the array into content to support TODO:344
+						//this.reduceAttribute('content', params[i]);
+						for (const aryContent of params[i])
+							this.reduceAttribute('contentDeep', aryContent);
+
+					// detect known DOM content types
+					// TODO: maybe it would be better to test (params[i] instaceof HTMLElement) || (bgComponent in params[i]) ?
+					} else if (('nodeType' in params[i]) || ('el' in params[i])) {
 						this.reduceAttribute('content', params[i]);
-					else {
+
+					// all other objects are interpretted as an <options> object (the loop excludes null objects)
+					} else {
 						// its an options object that explicitly names the information so iterate and reduce the information inside
 						for (var name in params[i])
 							this.reduceAttribute(name, params[i][name]);
@@ -395,30 +428,46 @@ export class ComponentParams {
 					// its an unnamedCB
 					this.reduceAttribute('unnamedCB', params[i]);
 					break;
+
+				default:
+					console.assert(false, "unknown parameter type in Component parameter list. Expecting Objects, strings and functions", {index:i, paramValue:params[i], paramType:typeof params[i], componentParams:this})
 			}
 		}
 
 		// the content array may have aritrary nested arrays that could be flattened, but I think its not necessary because
-		// Component.mount handles it. Nesting arrays do not introduse a correspnding DOM Node layer -- mount will flatten them.
-		this.content.reverse();
+		// Component.mount handles it. Nesting arrays do not introduce a correspnding DOM Node layer -- mount will flatten them.
+		// 2020-10 commented this out in support of TODO:344.
+		//         Whether we reverse content determines the order of super( [],...p) or super(...,[]) which
+		//         produces the correct ordering of children added by multiple levels in the component class hierarchy
+		//         I think when I added this, it did not ocur to me that the class author can decide what order they want
+		// TODO:344 interpret the second level arrays as bgComponent construction params
+		//const b4=this.content.slice()
+		//this.content.reverse();
+		//console.log('reversed',{b4,after:this.content});
 
 		// its actually class style but it seems like it should be called styles so make an alias so we can use either one.
 		this.style = this.styles;
+
+		// nameForCB gets reduced in the standard way so that the correct (usually the most derived) class's value gets set
+		// see Button hierarchy for an example of how its used.
+		if (this.nameForCB) {
+			this.optParams[this.nameForCB] = this.unnamedCB;
+		}
 	}
 
 	// return a classifier string which determines how to reduce the attribute
 	classifyAttribute(name) {
-		if (/^(content|paramNames|tagIDClasses|unnamedCB)$/.test(name)) return name;
-		else if (/(className|class|classes|classNames)/.test(name))     return 'className';
-		else if (/(tagName|name|idName)/.test(name))                    return 'top';
-		else if (name == 'children')                                    return 'content';
-		else if (name == 'optParams')                                   return 'optParams';
-		else if (name == 'styles')                                      return 'styles';
-		else if (name == 'style')                                       return 'styles';
-		else if (name == 'props')                                       return 'props';
-		else if (name in this.mapOfOptParamNames)                       return 'optParams';
-		else if (name in knownStyleProperties)                          return 'styles';
-		else                                                            return 'props';
+		if (/^(content(Deep)?|paramNames|tagIDClasses|unnamedCB)$/.test(name))    return name;
+		else if (/(className|class|classes|classNames)/.test(name))        return 'className';
+		else if (/(tagName|name|idName|(default)?Constructor|nameForCB)/.test(name)) return 'top';
+		else if (name == 'children')                                       return 'content';
+		else if (name == 'optParams')                                      return 'optParams';
+		else if (name == 'styles')                                         return 'styles';
+		else if (name == 'style')                                          return 'styles';
+		else if (name == 'props')                                          return 'props';
+		else if (name in this.mapOfOptParamNames)                          return 'optParams';
+		else if (name in knownStyleProperties)                             return 'styles';
+		else                                                               return 'props';
 	}
 
 
@@ -436,8 +485,19 @@ export class ComponentParams {
 		switch (attrClassifier) {
 			case 'children':
 			case 'content':
-				this.content.push(value);
+				// TODO:344 interpret the second level arrays as bgComponent construction params
+				if (Array.isArray(value)) {
+					for (const aryContent of value)
+						this.content.push(aryContent);
+				} else {
+					this.content.push(value);
+				}
 				return;
+
+				case 'contentDeep':
+					// TODO:344 interpret the second level arrays as bgComponent construction params
+					this.content.push(value);
+					return;
 
 			case 'className':
 				// classes are not first come first server except that '!' prevents additional classes from base classes from being added.
@@ -480,6 +540,7 @@ export class ComponentParams {
 		} else {
 			// since props is the default when the name is not recognized, and we think that DOM properties can not be objects
 			// (just string and numbers) send the attr to optParams if the value is an object
+			// 2020-10 what about properties with callbacks like onclick?
 			if (attrClassifier=='props' && typeof value == 'object')
 				this.reduceClassifiedAttr(this.optParams, 'optParams',  name, value);
 			else
@@ -487,7 +548,7 @@ export class ComponentParams {
 		}
 	}
 
-	// this function is used when the attribute <name> is classified and its not onw of the special cases.
+	// this function is used when the attribute <name> is classified and its not one of the special cases.
 	// it sets the attributes value in the right place and records it as locked so that it wont be overwritten if a lower base class
 	// also includes a value for it.
 	reduceClassifiedAttr(obj, classification, name, value) {
@@ -498,6 +559,7 @@ export class ComponentParams {
 		this.lockedParams[classification+name] = true;
 	}
 
+	// this translates our tagIDClasses syntax into REDOM's construction syntax so we can call el to create the DOM node
 	// we can probably make the dom el more effieciently than redom's el now but we can optimize that later.
 	makeREDOMTagString() {
 		var redomTagStr = this.tagName
@@ -509,15 +571,31 @@ export class ComponentParams {
 		return redomTagStr || '';
 	}
 
-	getUnnamedCB(force) {
-		if (this.unnamedCB.length == 0)
-			return (force) ? ()=>{} : null;
-		else if (this.unnamedCB.length == 1)
-			return this.unnamedCB[0];
+	// return a composite callback that invokes all the callbacks specified in the ComponentParams as the given type/name
+	getCompositeCB(forceFlag, cbName) {
+		if (!cbName || cbName!="unnamed" || cbName!="unnamedCB") {
+			var cbList = this.unnamedCB;
+		} else {
+			var cbList = this.optParams[cbName];
+			if (!cbList) cbList = [];
+			console.assert(Array.isArray(cbList), `ComponentParams - expected optParams.${cbName} to be an array of functions`, {cbName,forceFlag,componentParams:this} );
+		}
+
+		if (cbList.length == 0)
+			return (forceFlag) ? ()=>{} : null;
+		else if (cbList.length == 1)
+			return cbList[0];
 		else
 			return (...p)=>{
-				for (let i=0; i<this.unnamedCB.length; i++)
-					this.unnamedCB[i](...p)
+				const results = [];
+				for (const fn of cbList) {
+					const result = fn(...p);
+					if (result) results.push(result);
+				}
+				if (results.length == 1)
+					return results[0];
+				if (results.length > 1)
+					return results;
 			}
 	}
 }
@@ -526,7 +604,7 @@ export class ComponentParams {
 // Form a parent<->child relationship between DOM Elements.
 // This is a wrapper over the <domNode>.appendChild/insertBefore methods. It adds two features.
 //    1. The child content can be specified in more flexible ways
-//    2. It maintains named links in the prent to the child under these circumstances
+//    2. It maintains named links in the parent to the child under these circumstances
 //        * If a name is available for a child node
 //        * the parent has the [bgComponent] key (indicating that it is opting into this behavior)
 //
@@ -540,9 +618,9 @@ export class ComponentParams {
 //                                       supported types including a nested array. Array nesting will not affect how the child
 //                                       hiearchy is built -- all children will be traversed and added to this component directly.
 //                                       The one difference is if name is specified and content is an array, the <name> property
-//                                       created in the parent will be an array with elements poiting to the children. Any
+//                                       created in the parent will be an array with elements pointing to the children. Any
 //                                       children in the array that have a name property will have a reference added as that
-//                                       name reardless of whether the array itself is named. Typically, arrays will not be named
+//                                       name regardless of whether the array itself is named. Typically, arrays will not be named
 //                                       and there is no difference between adding the children individually or within an array.
 // ComponentUnmount:
 //     To avoid memory leaks, ComponentMount and ComponentUnmount should be called in matching pairs. If you call ComponentMount
@@ -558,8 +636,8 @@ export class ComponentParams {
 //    insertBefore:object  : (optional) the existing child to insert childContent before as a DOM Node or component object.
 //                           Default is append to end fo existing
 // Usage:
-// The name parameter is optional but for readability, it is the second parameter if provided.
-// Note that if first param is a single word content and the insertBefore is specified it will incorrectly be interpreted as
+// The name parameter is optional but for readability, it must be in the p1 position if provided.
+// Note that if the p1 param is a single word content and the insertBefore is specified it will incorrectly be interpreted as
 // Form1.  You can pass 'unnamed' as the first paramter avoid ambiguity and still result in an unnamed child.
 //    Form1: ComponentMount(<parent>, <name>, <childContent> [,<insertBefore>])
 //    Form2: ComponentMount(<parent>, <childContent> [,<insertBefore>])
@@ -585,12 +663,14 @@ export function ComponentMount(parent, p1, p2, p3) {
 	if (childContent == null)
 		return;
 
+	// check the content type. some types need special treatment and some are invalid.
 	switch (typeof childContent) {
 		// ChildContent can be null but not undefined. This is either a logic error in Form1/Form2 detection or the caller explicitly
 		// passed 'undefined' as the content
 		case 'undefined':
-			console.assert(false, "ChildContent can be null but not undefined.");
+			console.assert(false, "encounted undefined ChildContent. null is ok but not undefined.");
 
+		// string content can be either plain text content or the html describing a subtree (determined by the reHTMLContent RegExp)
 		case 'string':
 			var element;
 			if (reHTMLContent.test(childContent)) {
@@ -611,13 +691,22 @@ export function ComponentMount(parent, p1, p2, p3) {
 				if (name && parent[bgComponent])
 					parent[name]=[];
 				for (var i =0; i<childContent.length; i++) {
-					// recurse explicitly with all the params to avoid any ambiguity -- if insertBefore is undefined, pass null
-					var mountedChild = ComponentMount(parent, null, childContent[i], insertBefore || null);
+					var aryElement = childContent[i]
+					// TODO:344 interpret the second level arrays as bgComponent construction params
+					// 2020-10 added this block in support of TODO:344. if the second level is an array, treat it as construction params for a bgComponent.
+					if (Array.isArray(aryElement)) {
+						aryElement = ComponentConstruct(
+							(parent.defaultChildType) ? {defaultConstructor:parent.defaultChildType} : null,
+							...aryElement);
+					}
+					// call ComponentMount explicitly with all the params to avoid any ambiguity -- if insertBefore is undefined, pass null
+					var mountedChild = ComponentMount(parent, null, aryElement, insertBefore || null);
 					if (name && parent[bgComponent])
 						parent[name][i] = mountedChild;
 				}
 				return childContent;
 			}
+			//else any other object does not need special treatment and drops though to the rest of the method
 			break;
 
 		default:
@@ -666,4 +755,17 @@ export function ComponentUnmount(parent, name) {
 		delete parent[name].parent;
 	delete parent[name];
 	return child;
+}
+
+
+export function ComponentConstruct(...p) {
+	//TODO: support dynamic construction of a specific Component type, based on the $<type> field, maybe use customElements.define (CustomElementRegistry)
+	const componentParams = new ComponentParams(...p);
+	if (componentParams.Constructor) {
+		return new componentParams.Constructor(...p);
+	} else if (componentParams.defaultConstructor) {
+		return new componentParams.defaultConstructor(...p);
+	} else {
+		return new global.bg.Component(componentParams);
+	}
 }

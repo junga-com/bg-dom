@@ -8,6 +8,7 @@ import VersionCmp from 'node-version-compare'
 // RegisterPackage(__filename) function (typically in their top level js file module).
 class PkgInfo {
 	static registerEclosingPkgJson(mPath) {
+		// the /^(\/|\.|)$/ regex tests for the terminal path (/ or . or '') if the walk up the folders does not find a package.json
 		for (var mPath = path.dirname(mPath); !/^(\/|\.|)$/.test(mPath) && !fs.existsSync(mPath+'/package.json'); mPath = path.dirname(mPath));
 		if (!/^(\/|\.|)$/.test(mPath)) {
 			//const pkgJson = require(mPath+'/package.json');
@@ -25,6 +26,7 @@ class PkgInfo {
 			var pathRecord = versionRecord[pkgJson.modulePath];
 			if (!pathRecord)
 				versionRecord[pkgJson.modulePath] = pathRecord = pkgJson;
+			return pkgJson;
 		}
 	}
 	logStatus(detailFlag=false) {
@@ -57,7 +59,7 @@ class PkgInfo {
 //       }
 //    }
 export function RegisterPackage(moduleFilename) {
-	PkgInfo.registerEclosingPkgJson(moduleFilename);
+	return PkgInfo.registerEclosingPkgJson(moduleFilename);
 }
 
 
@@ -79,7 +81,7 @@ export function RegisterGlobalService(version, gObj, name,ctor) {
 		gObj[name] = ctor();
 		gObj[sGblVersionInfo][name] = version;
 	} else if (VersionCmp(version, gObj[sGblVersionInfo][name] || '1.0.0')>0) {
-console.log('!!!!!!!! replacing! '+name);
+		console.log('#!%$ replacing! '+name, {name,newVersion:version,replacedVersion:gObj[sGblVersionInfo][name] || '1.0.0'});
 		const prevObj = gObj[name];
 		gObj[name] = ctor(prevObj);
 		gObj[sGblVersionInfo][name] = version;

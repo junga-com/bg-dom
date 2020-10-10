@@ -1,6 +1,7 @@
 import { el, unmount as redomUnmount, setAttr, text } from 'redom';
 import { ComponentParams, ComponentMount, ComponentUnmount, bgComponent, reHTMLContent } from './componentUtils'
 import { Disposables } from './Disposables'
+import { RegisterGlobalService } from './GlobalServices'
 
 // Component is a base class to make writing DOM components easier.
 // The spirit of this Component class is that writing interactive UI applications in Javascript, be they delivered by web or be they
@@ -40,23 +41,19 @@ import { Disposables } from './Disposables'
 //     * an arbitrary number of string, object, or function construction parameters can be specified in any order.
 //     * information in parameters on the left, override the same information provided by parameters on their right.
 //     * a string parameter will always be parsed as a tagIDClasses syntax
-//       * the string prameter is the text label by default but can be adorn with the component name, tag, id, can classes.
+//       * the string parameter is the text label by default but can be adorn with the component name, tag, id, can classes.
 //     * parameters that are Component instances, DOM Nodes, and Arrays will be recognized as child content to add.
 //     * Any other object parameter will be a container for any number of named parameters.
 //
-// Named Params:
-// Any of these can be specified as a named parameter inside an object passed to this class's constructor. Alternatively, the
-// values of tagIDClasses, content, and unnamedCB can be specifed directly on the command line. tagIDClasses is a string syntax
-// for specifying name, tagName, idName, class, and (text) content in one string so any of those can be specified without using
-// the object literal syntax. See examples section. See ComponentParams for more details.
-//
-//    name:string    : a variable name used for this component. Typically this makes sense relative to its parent.
-//                     * Will be added to classList so its a shortcut for adding this one, special className
-//                     * If this component is mounted to a parent component, it will be available as <parent>.<name>
-//    tagName:string : <tagName> The name of the dom/html element type. <div> is the default.
-//    idName:string  : #id property on the DOM object. Should not be used for reusable components but useful for high level singlton components.
-//    class:stringSet: space separated list of classNames
-//    label:string   : text that will be set as the direct content of the node. If it begins with a tag it will be parsed as html.
+// Params:
+// The constructor implements a free form parameter list. Parameters are distringuished by type.
+//     type:string  : tagIDClasses syntax for encoding name,tagName,idName,classList,iconName,textContent
+//                   [name:][$<tagName>][#<idName>][.className1[.className2...]][ icon-<name>][ textContent]
+//     type:object<component> : child content components. extending HTMLElement or being a DOM node or an object with an 'el' attribrute
+//     type:array             : array of child components. all elements are interpretted as content so strings becomes text elements
+//     type:object<other>     : Parameter Object where keys can be any of the param names listed below
+//     type:function          : unamed callback to be added to default callback list
+// Named Params
 //    tagIDClasses : shortcut syntax multiple common data about the component.
 //                   [name:][$<tagName>][#<idName>][.className1[.className2...]][ icon-<name>][ textContent]
 //                   Note that each part of this string has a unique character that identifies it. name's character is a suffix,
@@ -66,6 +63,13 @@ import { Disposables } from './Disposables'
 //                   be plain text. If you want valid HTML to be treated as plain text, prefix it with an extra space.
 //                   If you are only providing textContent in the string that comes from a variable, it is safest to prefix it with
 //                   a space or comma in case the text happens to contain a [:$#.] character before the first space or comma.
+//    name:string    : a variable name used for this component. Typically this makes sense relative to its parent.
+//                     * Will be added to classList so its a shortcut for adding this one, special className
+//                     * If this component is mounted to a parent component, it will be available as <parent>.<name>
+//    tagName:string : <tagName> The name of the dom/html element type. <div> is the default.
+//    idName:string  : #id property on the DOM object. Should not be used for reusable components but useful for high level singlton components.
+//    class:stringSet: space separated list of classNames
+//    label:string   : text that will be set as the direct content of the node. If it begins with a tag it will be parsed as html.
 //    content:<multiple> : innerHTML specified in multiple ways -- text, html, DOM node, Component instance, or an array of multiple of those
 //    paramNames:stringSet: (specified by derived classes) space separated list of additional parameter names that this type of component supports.
 //    unnamedCB:function: a function that will be registered in the component's default callback event.
@@ -79,10 +83,16 @@ import { Disposables } from './Disposables'
 //    new Component(<tagIDClasses> [,<content>] [,options] [,<callback>])
 export class Component {
 	constructor(tagIDClasses, options, ...moreOptionsOrParamNames) {
-		this.disposables = new Disposables();
+		const componentParams = new ComponentParams(tagIDClasses, options, ...moreOptionsOrParamNames);
 
+		// this implements dynamic construction where the parameters determine the specific component class to construct
+		if (componentParams.Constructor && componentParams.Constructor  != new.target)
+			return new componentParams.Constructor(componentParams);
+
+		this.componentParams = componentParams;
+		this.defaultChildType = componentParams.defaultConstructor;
+		this.disposables = new Disposables();
 		this[bgComponent] = true;
-		this.componentParams = new ComponentParams(tagIDClasses, options, ...moreOptionsOrParamNames);
 		this.mounted          = [];
 		this.mountedUnamed    = [];
 
@@ -157,6 +167,10 @@ export class Component {
 			this.el.textContent = this.label;
 	}
 
+	fireOnChangeCB(...p) {
+		return this.componentParams.getCompositeCB(true)(...p)
+	}
+
 	destroy() {
 		this.disposables.dispose();
 		deps.objectDestroyed(this);
@@ -177,3 +191,7 @@ Component.mount = ComponentMount;
 Component.unmount = ComponentUnmount
 Component.text = text
 Component.setAttr = setAttr
+
+
+RegisterGlobalService('1.0.0', null, 'bg',       ()=>Object.create(null))
+RegisterGlobalService('1.0.1', bg,   'Component',()=>Component)

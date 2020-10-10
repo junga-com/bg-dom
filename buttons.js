@@ -1,41 +1,44 @@
 import { el, mount as redomMount } from 'redom';
 import { Component } from './component'
-import { ComponentParams } from './componentUtils'
+import { ComponentParams, reHTMLContent } from './componentUtils'
 import { Disposables } from './Disposables'
 
 
-// standard Button.
+// Button is a BGComponent to represent html/dom buttons. It does not derive from Component but its equivalent to it. Button is
+// often used alone but is also the base of a hierarchy of Buttons with various behaviors.
 // Params:
-//     [name:][icon-<icnName> ][label] : The first parameter is a string that contains 1 to 3 attributes of the button.
-//           name : variable-like name used for the button. Useful to identify which button was activated when multiple buttons share
-//                a single onActivatedCB callback. A container component may also use this as the property name to store this button in.
-//           icon-<icnName> : a name of one of the icons in the Atom Style Guide (ctrl-shift-G). The icon will appear to left of label
-//           label: The text displayed in the button.
-//     onActivatedCB(button,e) : a callback function invoked when the button is activated by click or keyboard. This object is passed
-//                as the first parameter and the event that caused the activation, if any, is passed in the second parameter.
-//     options  : an object with various optional keys. See Options: section below for details
-//     paramNames : intended only for derived classes. a string with a space separated list of names of properties in options that
-//                  the derviced class will process. Button will put those in this.optParams but otherwise ignore them.
-// Options:
-//     focusOnMouseClick : if true, change the focus to the button when its clicked with the mouse. This is the default for html
-//             buttons but this component changes it so that it will not steal the focus with mouse clicked. The user can still give
-//             it the focus by keyboard navigation. Setting this option to true, returns to the default behavior where the focus will
-//             be left on the button after clicking. Typically toolbar buttons should not steal the focus but form buttons may want to.
-// Options:
-//     <DOM properties and styles>    : See Component
-//     children : array of children components passed to Component::mount. See Component::mount
+// This uses the ComponentParams flexible parameters. The params important to this class are mentioned but others are supported too.
+//    <bgNodeID>  : string in the ComponentParams::<tagIDClasses> format to specify the button name, id, classes, label, etc...
+//        <name> : <name>: the variable name used to access this button from its parent. Should be unique within the parent's children
+//        <tagName> : $<tagName> default is 'button'
+//        <id>      : #<idName> the html id of the button
+//        <classes> : .<class1>.<class1> ... extra classes to add to the button
+//        <label>   : ' '<label> After a space, everything else is the label to be displyed in the button
+//        <icon>    : ' 'icon-<iconName> If the label begins with 'icon-' it is interpretted as an icon name to be displyed in the button
+//    <onActivatedCB>(btn) : (default for unnamed function parameters) a callback function invoked when this button is activated
+//                 by click or keyboard. The button component that fires the callback is passed to the callback.
+//    <pressed>  : if true, the button will start in the pressed state
+//    <focusOnMouseClick> : if true, change the focus to the button when its clicked with the mouse. This is the default for html
+//         buttons but this component changes it so that it will not steal the focus with mouse clicked. The user can still give
+//         it the focus by keyboard navigation. Setting this option to true, returns to the default behavior where the focus will
+//         be left on the button after clicking. Typically toolbar buttons should not steal the focus but form buttons may want to.
+//    <DOM properties and styles>    : any DOM property or style can be specified
+// See Also:
+//    ComponentParams : to see what other parameters are accepted by this class constructor
 export class Button {
-	constructor(tagIDClasses, onActivatedCB,  namedParams, ...p) {
+	constructor(tagIDClasses,  ...p) {
 		var componentParams = new ComponentParams({
 			tagIDClasses: '$button.btn',
-			paramNames: 'focusOnMouseClick'
-		}, tagIDClasses, onActivatedCB, namedParams, ...p);
+			paramNames  : 'focusOnMouseClick',
+			nameForCB   :'onActivatedCB'
+		}, tagIDClasses, ...p);
 
 		this.disposables = new Disposables();
+		this.componentParams = componentParams;
 
 		this.name          = componentParams.name;
 		this.iconName      = componentParams.optParams.icon;
-		this.onActivatedCB = componentParams.getUnnamedCB('force');
+		this.onActivatedCB = componentParams.getCompositeCB(false, 'onActivatedCB');
 		this.optParams     = componentParams.optParams;
 
 		if (this.iconName)
@@ -44,16 +47,12 @@ export class Button {
 		this.el = el(componentParams.makeREDOMTagString(), Object.assign({}, componentParams.props, {style:componentParams.style}));
 
 		this.setLabel(componentParams.optParams.label);
-		this.el.onclick = (e)=>{this.onClick(e)};
+		this.el.onclick = (e)=>{this.rawOnClick(e)};
 
 		if (! componentParams.optParams["focusOnMouseClick"])
 			this.el.onmousedown = ()=>{this.lastFocused=document.activeElement}
 
-		// TODO: this should use the same algorithm as Component::mount
-		// if (optChildren)
-		// 	for (var i=0; i<optChildren.length; i++) {
-		// 		mount(this.el, optChildren[i]);
-		// 	}
+		// TODO: should this ComponentMount any specified child content? or should buttons not support child content?
 	}
 
 	destroy() {
@@ -61,56 +60,71 @@ export class Button {
 		deps.objectDestroyed(this);
 	}
 
-	onClick(e) {
+	rawOnClick(e) {
 		this.lastFocused && this.lastFocused.focus(); this.lastFocused=null;
-		this.onActivatedCB && this.onActivatedCB(this, e);
+		this.onClick(e);
+	}
+	onClick(e) {
+		this.onClickCB && this.onClickCB(this, e);
 		this.onActivated(e);
+	}
+	onActivated(e) {
+		this.onActivatedCB && this.onActivatedCB(this, e);
 	}
 
 	getLabel() {return this.label}
 
 	setLabel(label) {
 		this.label = label || '';
-		if (/^<[^>]+>/.test(this.label))
+		if (reHTMLContent.test(this.label))
 			this.el.innerHTML = this.label;
 		else
 			this.el.innerText = this.label
 	}
-
-	onActivated(e) {}
 }
 
-// ToggleButton is two-state. When activated it toggles between pressed(true) and unpressed(false). The callback is passed the
-// pressed state. The presence of the .pressed class determines the current state and styling
+
+
+
+// ToggleButton is a two-state, bi-stable button. When activated it toggles between pressed/selected/true and
+// unpressed/unselected/false. The default callback is onStateChangeCB instead of onActivatedCB. onStateChangeCB is passed the
+// pressed state and the button object. The presence of the .selected CSS class determines the component's state and styling.
 // Params:
-//     [name:][icon-<icnName> ][label] : The first parameter is a string that contains 1 to 3 attributes of the button.
-//           name : variable-like name used for the button. Useful to identify which button was activated when multiple buttons share
-//                a single onActivatedCB callback. A container component may also use this as the property name to store this button in.
-//           icon-<icnName> : a name of one of the icons in the Atom Style Guide (ctrl-shift-G). The icon will appear to left of label
-//           label: The text displayed in the button.
-//     onActivatedCB(isPressed, this) : a callback function invoked when the button is activated by click or keyboard. The current
-//                 pressed state and this object are passed as parameters
-//     options  : an object with various optional keys
-// Options:
-//     pressed  : if true, the button will start in the pressed state
-//     focusOnMouseClick : if true, change the focus to the button when its clicked with the mouse. This is the default for html
+// This uses the ComponentParams flexible parameters. The params important to this class are mentioned but others are supported too.
+//    <bgNodeID>  : string in the ComponentParams::<tagIDClasses> format to specify the button name and optionally other things
+//    <onStateChangeCB(isPressed, btn) : (default for unnamed function parameters) a callback function invoked when the button's
+//                 state is changed. The current pressed state and the button object are passed as parameters
+//    <pressed>  : if true, the button will start in the pressed state
+//    <focusOnMouseClick> : if true, change the focus to the button when its clicked with the mouse. This is the default for html
 //         buttons but this component changes it so that it will not steal the focus with mouse clicked. The user can still give
 //         it the focus by keyboard navigation. Setting this option to true, returns to the default behavior where the focus will
 //         be left on the button after clicking. Typically toolbar buttons should not steal the focus but form buttons may want to.
-// Options:
-//     <DOM properties and styles>    : See Component
-//     children : array of children components passed to Component::mount. See Component::mount
+// See Also:
+//    ComponentParams : to see what other parameters are accepted by this class constructor
+//    Button : for common behavior to all button hierarchy classes
 export class ToggleButton extends Button {
-	constructor(nameIconLabel, onActivatedCB,  ...options) {
-		super({paramNames: 'pressed'}, nameIconLabel, onActivatedCB,  ...options);
+	constructor(bgNodeID, ...options) {
+		super({paramNames: 'pressed', nameForCB:'onStateChangeCB'}, bgNodeID, ...options);
 		this.setPressedState(Boolean(this.optParams["pressed"]));
+		this.onStateChangeCB = this.componentParams.getCompositeCB(false, 'onStateChangeCB');
 	}
-	onClick() {
-		this.lastFocused && this.lastFocused.focus(); this.lastFocused=null;
+	onActivated(e) {
 		this.el.classList.toggle("selected");
-		this.onActivatedCB && this.onActivatedCB(this.isPressed(), this);
+		super.onActivated(e);
 		this.onStateChange(this.isPressed());
 	}
+	onStateChange(newState) {
+		this.onStateChangeCB && this.onStateChangeCB(newState, this);
+	}
+
+	setState(newState) {
+		if (newState != this.isPressed()) {
+			this.setPressedState(newState);
+			super.onActivated();
+			this.onStateChange(this.isPressed());
+		}
+	}
+
 	isPressed() {
 		return this.el.classList.contains("selected");
 	}
@@ -118,8 +132,8 @@ export class ToggleButton extends Button {
 		this.el.classList.toggle("selected", state);
 	}
 
-	onStateChange(newState) {}
 }
+
 
 
 // CommandButton is a Button that invokes a Atom command when clicked. It is constructed from the command name and handles the
@@ -167,82 +181,73 @@ export class CommandButton extends Button {
 
 
 
-// OneShotButton stays pressed when its activated and wont fire its onActivatedCB again when clicked on until it is reset. Calling
-// reset makes it appear unpressed and it can then be pressed (activated) again. It is used by RadioButtonGroup which resets all
-// the other buttons when any button in the group is pressed.
+// OneShotButton stays pressed when its activated and wont fire its onActivatedCB again until it is reset. Calling reset or
+// setPressedState(false) makes it appear unpressed and it can then be pressed (activated) again. It is used by RadioButtonGroup
+// which resets all the other buttons when any button in the group is pressed.
 // Params:
-//     [name:][icon-<icnName> ][label] : The first parameter is a string that contains 1 to 3 attributes of the button.
-//           name : variable-like name used for the button. Useful to identify which button was activated when multiple buttons share
-//                a single onActivatedCB callback. A container component may also use this as the property name to store this button in.
-//           icon-<icnName> : a name of one of the icons in the Atom Style Guide (ctrl-shift-G). The icon will appear to left of label
-//           label: The text displayed in the button.
-//     onActivatedCB(isPressed, this) : a callback function invoked when the button is activated by click or keyboard. The current
-//                 pressed state and this object are passed as parameters
-//     options  : an object with various optional keys
-// Options:
-//     pressed  : if true, the button will start in the pressed state
-//     focusOnMouseClick : if true, change the focus to the button when its clicked with the mouse. This is the default for html
+// This uses the ComponentParams flexible parameters. The params important to this class are mentioned but others are supported too.
+//    <bgNodeID>  : string in the ComponentParams::<tagIDClasses> format to specify the button name and optionally other things
+//    <onActivatedCB>(btn) : (default for unnamed function parameters) a callback function invoked when this button is activated
+//                 by click or keyboard. This button object is passed to the callback.
+//    <pressed>  : if true, the button will start in the pressed state
+//    <focusOnMouseClick> : if true, change the focus to the button when its clicked with the mouse. This is the default for html
 //         buttons but this component changes it so that it will not steal the focus with mouse clicked. The user can still give
 //         it the focus by keyboard navigation. Setting this option to true, returns to the default behavior where the focus will
 //         be left on the button after clicking. Typically toolbar buttons should not steal the focus but form buttons may want to.
-// Options:
-//     <DOM properties and styles>    : See Component
-//     children : array of children components passed to Component::mount. See Component::mount
+// See Also:
+//    ComponentParams : to see what other parameters are accepted by this class constructor
+//    Button : for common behavior to all button hierarchy classes
 export class OneShotButton extends ToggleButton {
-	constructor(nameIconLabel, onActivatedCB, ...options) {
-		super(nameIconLabel, onActivatedCB,  ...options);
+	constructor(bgNodeID, ...options) {
+		super({nameForCB:'onActivatedCB'}, bgNodeID,  ...options);
 	}
 	reset() {
 		this.setPressedState(false);
 	}
-	onClick() {
-		this.lastFocused && this.lastFocused.focus(); this.lastFocused=null;
+	onActivated(e) {
 		if (!this.isPressed()) {
-			this.el.classList.toggle("selected", true);
-			this.onActivatedCB && this.onActivatedCB(this.name || this.el.id, this);
+			super.onActivated(e);
 		}
 	}
 }
 
-// A RadioButtonGroup is a container of OneShotButton in which exactly one is pressed at a time.
+// A RadioButtonGroup is a container of components that support the setPressedState(true|false) method and the onStateChangeCB=(value)=>{} property.
+// The OneShotButton component is typically use and is the default that will be used to create children when the constructor parameter includes
+// component construction arrays for content.
+// When any of the children components fire their activation event, the 'value' property of the RadioButtonGroup will be updated and all the
+// other children will have their setPressedState(false) methods called. The effect is that exactly one child will be in the pressed at a time.
 // Params:
-//     onChangeCB(buttonName) : a callback that gets called whenever the selection changes.
-//     selectedButtonName     : the button that is pressed initially
-//     buttonsData   : an array describing the buttons. The button data is the information needed for the Button constructor.
-//              string button data: the [name:][icon-<icnName> ][label] accepted by the Button class.
-//              object button data: the options object accepted by the Button class additionally with a 'label' property containing
-//                                  the [name:][icon-<icnName> ][label] parameter.
-//     options : the properties recognized in the options param are described in the Options section
+//    <tagIDClasses>  : string in Component::tagIDClasses format to typically specify the name and additional classes.
+//    <initialValue>  : the child name that will be pressed initially
 // Options:
-//     <DOM properties and styles>    : See Component
-//     children : array of children components passed to Component::mount. See Component::mount
+//    Options can be specified in a flexible way. See ComponentParams
+//    <unamedCB>      : a callback that gets called whenever the value changes. value is passed to the callback.
+//    <content>       : the child content should consist typically of two or more components like ToggleButton that support the
+//                         <component>.setPressedState(true|false) method.
+//                         <component>.onStateChangeCB=(state, button)=>{...} property.
+//                      See ComponentParams for information about specifying child content. The OneShotButton component is the default
+//                      child component that will be constructed from construction data arrays in the content.
+//    <DOM properties and styles>    : See ComponentParams
 export class RadioButtonGroup extends Component {
-	constructor(onChangeCB, selectedButtonName, buttonsData, ...options) {
-		super('$div.btn-group.mutex', ...options);
-		this.onChangeCB = onChangeCB;
-		this.value = selectedButtonName;
-		for (var i=0; buttonsData && i<buttonsData.length; i++) {
-			if (typeof buttonsData[i] == 'string') {
-				var btn = new OneShotButton(buttonsData[i], (buttonName)=>this.onChange(buttonName));
-			} else {
-				var btn = new OneShotButton(buttonsData[i]["label"], (buttonName)=>this.onChange(buttonName), buttonsData[i], "label");
-			}
-			btn.name = (btn.name) ? btn.name : "btn"+i;
-			this[btn.name] = btn;
-			btn.setPressedState(btn.name == selectedButtonName)
-			redomMount(this, this[btn.name]);
-			this.mounted.push(btn.name);
+	constructor(tagIDClasses, initialValue, ...options) {
+		super(tagIDClasses, {defaultConstructor:OneShotButton}, '$div.btn-group.mutex', ...options);
+		this.value = initialValue;
+
+		// since we did not create the child buttons directly, iterate them to set our callback which implements the mutually exclusive nature
+		// if a child does not support onStateChangeCB, we expect it will ignore it and this will do no harm
+		for (const child of this.mounted) {
+			this[child].onStateChangeCB=(state, button)=>{if (state) this.setValue(button.name)};
 		}
+
+		this.setValue(this.value);
 	}
-	onChange(buttonName) {
-		this.value = buttonName;
-		for (var i=0; i>this.mounted.length; i++) {
-			this[this.mounted[i]].setPressedState((this.mounted[i] == buttonName));
-		}
-		this.onChangeCB(buttonName);
-	}
+
 	setValue(buttonName) {
-		this.onChange(buttonName);
-		this.value = buttonName;
+		for (const child of this.mounted)
+			this[child].setPressedState && this[child].setPressedState((child == buttonName));
+		if (this.value != buttonName) {
+			this.value = buttonName;
+			this.fireOnChangeCB(buttonName);
+		}
 	}
 }
