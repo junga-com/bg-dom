@@ -1,8 +1,22 @@
-import { el, mount as redomMount, unmount as redomUnmount, text } from 'redom';
+//import { mount as redomMount, unmount as redomUnmount, text } from 'redom';
 
-// redom does not export this function so repeat it
-export function getEl (parent) {
-	return (parent.nodeType && parent) || (!parent.el && parent) || getEl(parent.el);
+// Library componentUtils
+// This library implements the core bgdom component functionality that is used by the Compnent and Button (and other?) class
+// hierarchies.
+//      class ComponentParams       : process an arbitrarily long paramether list to reduce it into one set of attributes to create
+//                                    a DOM node and possibly a tree of content underneath it.
+//      function ComponentMount     : attach a child to a parent in the DOM hiearchy
+//      function ComponentUnmount   : deattach a child from a parent
+//      function ComponentConstruct : dynamically construct a component. The class of the component is specified within the parameters
+
+// return the HTMLElement associated with the object passed in
+export function getEl(component) {
+	if (!component)
+		return null;
+	else if (component.nodeType || !component.el)
+		return component;
+	else
+		return getEl(component.el);
 }
 
 // compiled common Regular Expressions
@@ -658,6 +672,7 @@ export function ComponentMount(parent, p1, p2, p3) {
 		childContent = p1
 		insertBefore = p2
 	}
+	const replace = false; // there is probably some use-case where we want mount to replace the child but we do not yet support it
 
 	// when specifying children content, sometimes its convenient to allow the expression to result null, so just ignore this case
 	if (childContent == null)
@@ -675,12 +690,13 @@ export function ComponentMount(parent, p1, p2, p3) {
 			var element;
 			if (reHTMLContent.test(childContent)) {
 				// it begins with an html tag so interpret it as html
-				element = el('');
+				element = document.createElement('div');
 				element.innerHTML = childContent.trim();
 				element = element.firstChild;
 			}
 			else
-				element = text(childContent);
+				element = document.createTextNode(childContent);
+				//element = text(childContent);
 
 			childContent = element;
 			break;
@@ -714,7 +730,18 @@ export function ComponentMount(parent, p1, p2, p3) {
 	}
 
 	// do the work
-	redomMount(parent, childContent, insertBefore);
+	//redomMount(parent, childContent, insertBefore);
+	const parentEl = getEl(parent);
+	const childEl = getEl(childContent);
+	const insertBeforeEl = getEl(insertBefore);
+	if (insertBeforeEl && replace) {
+		parentEl.replaceChild(childEl, insertBeforeEl);
+	} else if (insertBeforeEl) {
+		parentEl.insertBefore(childEl, insertBeforeEl);
+	} else {
+		parentEl.appendChild(childEl);
+	}
+
 
 	// if name was not explicitly passed in, see if we can get it from the content
 	if (!name && typeof childContent == 'object' && childContent.name)
@@ -748,7 +775,13 @@ export function ComponentMount(parent, p1, p2, p3) {
 export function ComponentUnmount(parent, name) {
 	var child = parent[name];
 	console.assert(!!child, "unmounting a child with ComponentUnmount that does not exist in the parent", {parent, name})
-	redomUnmount(parent, parent[name]);
+
+	//redomUnmount(parent, parent[name]);
+	const parentEl = getEl(parent);
+	const childEl = getEl(parent[name]);
+	if (childEl.parentNode)
+		parentEl.removeChild(childEl);
+
 	var i = parent.mounted.indexOf(name);
 	if (i != -1) parent.mounted.splice(i,1);
 	if (parent[name].parent === parent)

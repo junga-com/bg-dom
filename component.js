@@ -1,4 +1,4 @@
-import { el, unmount as redomUnmount, setAttr, text } from 'redom';
+import { el, unmount as redomUnmount, setChildren as redomSetChildren, setAttr, text } from 'redom';
 import { ComponentParams, ComponentMount, ComponentUnmount, bgComponent, reHTMLContent } from './componentUtils'
 import { Disposables } from './Disposables'
 import { RegisterGlobalService } from './GlobalServices'
@@ -150,6 +150,10 @@ export class Component {
 		return ComponentUnmount(this, name)
 	}
 
+	setChildren(children) {
+		redomSetChildren(this, children || []);
+	}
+
 	// override these to take actions when the component is added or removed from the DOM
 	onmount() {}
 	onunmount() {}
@@ -180,6 +184,7 @@ export class Component {
 			typeof child.destroy == 'function' && child.destroy();
 		}
 		while (child = this.mountedUnamed.pop()) {
+			// TODO: replace this (maybe the whiole algorithm, not just this call) with ComponentUnmount
 			redomUnmount(this, child);
 			typeof child.destroy == 'function' && child.destroy();
 		}
@@ -190,6 +195,7 @@ Component.sym = bgComponent;
 Component.mount = ComponentMount;
 Component.unmount = ComponentUnmount
 Component.text = text
+Component.el = el
 Component.setAttr = setAttr
 
 

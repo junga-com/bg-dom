@@ -1,4 +1,4 @@
-import { el, mount as redomMount } from 'redom';
+import { el } from 'redom';
 import { Component } from './component'
 import { ComponentParams, reHTMLContent } from './componentUtils'
 import { Disposables } from './Disposables'

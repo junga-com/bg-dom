@@ -1,7 +1,6 @@
 import {RegisterPackage} from './GlobalServices'
 RegisterPackage(__filename);
 
-export {mount,unmount} from 'redom'
 export * from './GlobalServices.js'
 export * from './Disposables'
 export * from './bg-promise'
