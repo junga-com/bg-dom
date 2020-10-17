@@ -1,4 +1,9 @@
-//import { mount as redomMount, unmount as redomUnmount, text } from 'redom';
+import {
+	text        as redomText,
+	el          as redomHtml,
+	setAttr     as redomSetAttr
+} from 'redom';
+
 
 // Library componentUtils
 // This library implements the core bgdom component functionality that is used by the Compnent and Button (and other?) class
@@ -9,7 +14,10 @@
 //      function ComponentUnmount   : deattach a child from a parent
 //      function ComponentConstruct : dynamically construct a component. The class of the component is specified within the parameters
 
+
+
 // return the HTMLElement associated with the object passed in
+// A bgComponent can be a DOM node/element or an object that has an 'el' property that is the DOM node/element.
 export function getEl(component) {
 	if (!component)
 		return null;
@@ -17,6 +25,46 @@ export function getEl(component) {
 		return component;
 	else
 		return getEl(component.el);
+}
+
+
+// return the bgComp object associated with <el>.
+// A bgComponent can be a DOM node/element or an object that has an 'el' property that is the DOM node/element. Given an Object with
+// an 'el' property, the el property navigates to the DOM node/element. To go the other way, we use a WeakMap instead of extending the
+// DOM node. An alternate implementation would be to add a WeakRef property to the DOM node/element that points back to the associated
+// object but WeakRef is not yet available in Atom's nodejs version.
+export function getCompFromEl(el, forceFlag) {
+	if (forceFlag)
+		return ComponentMap.get(el) || el;
+	else
+		return ComponentMap.get(el);
+}
+const ComponentMap = new WeakMap();
+
+export function getParent(bgComp) {
+	if (!bgComp)                     return undefined;
+	const [bgObj, bgEl] = ComponentNormalize(bgComp);
+	if (bgObj && bgObj.parent)       return bgObj.parent;
+	if (bgEl  && bgEl.parentElement) return bgEl.parentElement;
+}
+
+// pass in bgComp as either the extra object associated with a DOM object or as the DOM object itself and it returns [<obj>,<el>] where
+// <obj> is the extra object (or null if none exist) and <el> is the DOM object.
+// Params:
+//    <bgComp>  : a reference to a bgComponent which can be the DOM element or the business logic object associated with it
+//    <forceFlag> : default false. If true the <obj> returned in the first array position will be <either> instead of <obj>
+// Return Value:
+//    [obj,el,either] : where....
+//       <obj> : is the extra object associated with the DOM object (or null if there is none)
+//       <el>  : is the DOM object itself.
+//       <either> : is <obj> if it exists or <el> otherwise so that <either> is non-null unless <bgComp> is null
+export function ComponentNormalize(bgComp) {
+	if (bgComp && Array.isArray(bgComp)) return bgComp;
+	if (bgComp && (bgComponent in bgComp))
+		return [bgComp, bgComp.el, bgComp]
+	const el  = getEl(bgComp);
+	const obj = getCompFromEl(el);
+	return [obj, el, obj||el]
 }
 
 // compiled common Regular Expressions
@@ -363,6 +411,14 @@ const knownStyleProperties = {
 //     optParams,props,styles : these are containers of named data and each key is treated separately according to its name.
 //
 export class ComponentParams {
+	static makeTagIDClasses(el, terseFlag) {
+		if (!el) return '';
+		var tagIDClasses=`\$${el.nodeName.toLowerCase()}`;
+		if (el.id) tagIDClasses+=`#${el.id}`;
+		if (!terseFlag && el.classList.length>0) tagIDClasses+=`.${Array.from(el.classList).join('.')}`;
+		return tagIDClasses;
+	}
+
 	// params can be any number of the following in any order
 	//   tagIDClasses:string, options:object, callback:function, domEl:object(w/nodeType), component:object(w/el), or content:array
 	constructor(...params) {
@@ -399,7 +455,7 @@ export class ComponentParams {
 				this.paramNames += ' '+params[i].paramNames;
 		}
 		// make a map of the optParams names for efficient classification lookups.
-		for (var name of this.paramNames.replace(/\s+/g,' ').split(' '))
+		for (var name of this.paramNames.replace(/\s*[,\s]\s*/g,' ').split(' '))
 			this.mapOfOptParamNames[name] = true;
 
 
@@ -448,8 +504,8 @@ export class ComponentParams {
 			}
 		}
 
-		// the content array may have aritrary nested arrays that could be flattened, but I think its not necessary because
-		// Component.mount handles it. Nesting arrays do not introduce a correspnding DOM Node layer -- mount will flatten them.
+		// the content array may have arbitrary nested arrays that could be flattened, but I think its not necessary because
+		// ComponentMount handles it. Nesting arrays do not introduce a correspnding DOM Node layer -- mount will flatten them.
 		// 2020-10 commented this out in support of TODO:344.
 		//         Whether we reverse content determines the order of super( [],...p) or super(...,[]) which
 		//         produces the correct ordering of children added by multiple levels in the component class hierarchy
@@ -612,6 +668,51 @@ export class ComponentParams {
 					return results;
 			}
 	}
+
+
+	// Create the DOM node/element that represents the parsed data in this ComponentParams instance.
+	// If bgComp is passed in, the DOM node/element will be bi-directionally linked with the the bgComp object and the bgComp ojject
+	// will be initialized with the fields expected of full bgComponent object.
+	// If bgComp is not provided, the DOM node/element is the bgComp reference. When the DOM node/element is the bgComp, it is lighter
+	// but not all the features of a full bgComponent will be availabel. Full bgComponents tend to be important nodes with your own
+	// application (business logic) level API methods. Light bgComponents tend to be the content tree under full bgComponents.
+	// Member Variables:
+	// When the <bgComp> parameter is passed in, these properties are set in it
+	//    <bgComponent>    : bgComponent is a Symbol that identifies bgComp as being a bgComponent full object
+	//    <name>           : the name of the node relative to its parent. Can be '' (unnamed)
+	//    <mounted>        : array of names (strings) of the named children of this component
+	//    <mountedUnamed>  : array of bgComponents objects of any unnamed children
+	//    <el>             : reference to the DOM node/element associated with this bgComponent
+	makeHtmlNode(bgComp) {
+		const el = redomHtml(this.makeREDOMTagString(), Object.assign({}, this.props, {style:this.styles}));
+		lifeCycleChecker && lifeCycleChecker.mark(bgComp||el, 'ctor');
+		domTreeChanges.addToWatch(el);
+		// if bgComp is given, create a two way link between it and the el
+		if (bgComp) {
+			bgComp[bgComponent]  = true;
+			bgComp.name          = this.name;
+			bgComp.mounted       = [];
+			bgComp.mountedUnamed = [];
+			bgComp.el            = el;
+			ComponentMap.set(el,bgComp);
+		}
+		return el;
+	}
+	destroyHtmlNode($bgComp) {
+		const [bgCompObj,bgCompEl,bgComp] = ComponentNormalize($bgComp);
+		if (bgCompObj) {
+			var child;
+			while (child = bgCompObj.mounted.pop())
+				ComponentDestroyChild(bgCompObj,child);
+			while (child = bgCompObj.mountedUnamed.pop())
+				ComponentDestroyChild(bgCompObj,undefined, child);
+			bgCompObj[bgComponent] = 'destroyed'
+			ComponentMap.delete(bgCompEl);
+			bgCompObj.el = null;
+		}
+		domTreeChanges.removeFromWatch(bgCompEl);
+		lifeCycleChecker && lifeCycleChecker.mark(bgComp, 'destroyed');
+	}
 }
 
 
@@ -639,23 +740,26 @@ export class ComponentParams {
 // ComponentUnmount:
 //     To avoid memory leaks, ComponentMount and ComponentUnmount should be called in matching pairs. If you call ComponentMount
 //     then you should call ComponentUnmount to undo the cyclic references when the dom element is no longer needed.
-//     The exception to this is if the child is unamed. In that case no extra references are formed and the discarding the parent
-//     DOM node is sufficient.
 //
 // Params:
-//    name:string          : the variable-like name of the child. If not provided, <childContent>.name will be used. If that
-//                           does not exist, childContent will be unamed with regard to its parent.
-//                           The special name 'unnamed' is recognized as no name being passed. This could be useful to avoid ambiguity
-//    childContent:<multi> : the content to be added to this component's children. It can be given in any of the types described above.
-//    insertBefore:object  : (optional) the existing child to insert childContent before as a DOM Node or component object.
-//                           Default is append to end fo existing
+//    <parent>       : the parent to mount the children to
+//    <name>         : the variable-like name of the child being added in the context of the parent.
+//                     If not provided, <childContent>.name will be used. Normaly names like this are a property of the parent and
+//                     not the child but in the case of the DOM tree, there is a single hierarchy so the usual problem is less of a
+//                     problem and it makes for a much nicer syntax to create content trees b/c the children can be specified in
+//                     arrays with their names embedded in their state.
+//                     If no name exist, the childContent will be unamed with regard to its parent.
+//                     The special name 'unnamed' is recognized as no name being passed. This is useful in overriding a child's name property
+//    <childContent> : the children to be mounted to this component. It can be given in any of the types described above.
+//    <insertBefore> : (optional) the existing child to insert childContent before as a DOM Node or component object.
+//                     Default is append to end fo existing
 // Usage:
 // The name parameter is optional but for readability, it must be in the p1 position if provided.
 // Note that if the p1 param is a single word content and the insertBefore is specified it will incorrectly be interpreted as
-// Form1.  You can pass 'unnamed' as the first paramter avoid ambiguity and still result in an unnamed child.
+// Form1.  You can pass 'unnamed' as the first paramter to avoid this ambiguity and still result in an unnamed child.
 //    Form1: ComponentMount(<parent>, <name>, <childContent> [,<insertBefore>])
 //    Form2: ComponentMount(<parent>, <childContent> [,<insertBefore>])
-export function ComponentMount(parent, p1, p2, p3) {
+export function ComponentMount($parent, p1, p2, p3) {
 	// detect form1 and form2
 	var name, childContent, insertBefore;
 	// if p3 is specified the user maust have called with 3 params so it must be form 1
@@ -673,6 +777,9 @@ export function ComponentMount(parent, p1, p2, p3) {
 		insertBefore = p2
 	}
 	const replace = false; // there is probably some use-case where we want mount to replace the child but we do not yet support it
+
+	console.assert($parent, "ComponentMount called with null parent", {$parent, name, childContent,insertBefore})
+	const [parentObj, parentEl, parent] = ComponentNormalize($parent);
 
 	// when specifying children content, sometimes its convenient to allow the expression to result null, so just ignore this case
 	if (childContent == null)
@@ -716,7 +823,7 @@ export function ComponentMount(parent, p1, p2, p3) {
 							...aryElement);
 					}
 					// call ComponentMount explicitly with all the params to avoid any ambiguity -- if insertBefore is undefined, pass null
-					var mountedChild = ComponentMount(parent, null, aryElement, insertBefore || null);
+					var mountedChild = ComponentMount([parentObj, parentEl, parent], null, aryElement, insertBefore || null);
 					if (name && parent[bgComponent])
 						parent[name][i] = mountedChild;
 				}
@@ -729,10 +836,17 @@ export function ComponentMount(parent, p1, p2, p3) {
 			console.assert(false, "Invalid arguments. ChildContent needs to be an object, array or string", {childContent:childContent,p1:p1,p2:p2,p3:p3, type:typeof childContent});
 	}
 
+	if (typeof childContent.onPreMount == 'function')
+		childContent.onPreMount()
+
+	const [childObj,  childEl, child ] = ComponentNormalize(childContent);
+
+	const isConnecting = parentEl.isConnected && ! childEl.isConnected;
+
+	if (isConnecting)
+		FireDOMTreeEvent(child, 'onPreConnected');
+
 	// do the work
-	//redomMount(parent, childContent, insertBefore);
-	const parentEl = getEl(parent);
-	const childEl = getEl(childContent);
 	const insertBeforeEl = getEl(insertBefore);
 	if (insertBeforeEl && replace) {
 		parentEl.replaceChild(childEl, insertBeforeEl);
@@ -742,52 +856,130 @@ export function ComponentMount(parent, p1, p2, p3) {
 		parentEl.appendChild(childEl);
 	}
 
+	if (isConnecting)
+		FireDOMTreeEvent(child, 'onConnected');
 
 	// if name was not explicitly passed in, see if we can get it from the content
-	if (!name && typeof childContent == 'object' && childContent.name)
-		name = childContent.name;
+	if (!name && child && typeof child.name == 'string')
+		name = child.name;
 
 	if (parent[bgComponent]) {
 		if (name) {
-			parent[name] = childContent;
-			childContent.name = name;
+			parent[name] = child;
 			if (!parent.mounted)
 				parent.mounted = [];
 			parent.mounted.push(name);
-			var elNode = getEl(childContent); if (elNode && elNode.classList) elNode.classList.add(name);
+			if (childEl && childEl.classList) childEl.classList.add(name);
 		} else {
 			if (!parent.mountedUnamed)
 				parent.mountedUnamed = [];
-			parent.mountedUnamed.push(childContent);
+			parent.mountedUnamed.push(child);
 		}
 	}
 
-	if (childContent[bgComponent]) {
-		if (childContent.parent)
-			console.log('replacing childContent.parent = ',childContent.parent, ' with ', parent);
-		childContent.parent = parent;
+	if (child[bgComponent]) {
+		if (child.parent && child.parent!==parent)
+			console.log('replacing child.parent = ',child.parent, ' with ', parent);
+		child.parent = parent;
+		child.name = name;
 	}
 
-	return childContent;
+	lifeCycleChecker && lifeCycleChecker.mark(child, 'onMounted');
+	if (typeof child.onMount == 'function')
+		child.onMount()
+
+	return child;
 }
 
-// Tear down the parent<->child relationship that ComponentMount created and remove the DOM child relationship also.
-export function ComponentUnmount(parent, name) {
-	var child = parent[name];
-	console.assert(!!child, "unmounting a child with ComponentUnmount that does not exist in the parent", {parent, name})
+// Tear down the parent<->child relationship that ComponentMount created
+// Params:
+//    <parent>  : the parent bgComponent of the relationship
+//    <name>    : the name of the child in the context of the parent of undefined if the child is unnamed
+//    <child>   : if <name> is undefined, the child object must be passed in.
+export function ComponentUnmount($parent, name, $child) {
+	const [parentObj, parentEl, parent] = ComponentNormalize($parent);
+	var childObj, childEl, child
+	if (name && typeof name == 'string') {
+		console.assert(!$child || $child===parent[name], "ComponentUnmount is typically called with either a name or a child object. Both were specified and the named child is not the child passed in", {parent:parent, name, passedInChild:$child, namedChild:parent&&parent[name]})
+		$child = parent[name];
+		console.assert(!!$child, "ComponentUnmount: unmounting a child by name that does not exist in the parent", {parent, name, passedInChild:$child, namedChild:parent&&parent[name]});
+		[childObj,  childEl,  child ] = ComponentNormalize($child);
+	} else if (name && typeof name == 'object') {
+		console.assert(!$child, "ComponentUnmount: invalid arguments", {arguments, parent:$parent, name, child:$child});
+		$child = name;
+		[childObj,  childEl,  child ] = ComponentNormalize($child);
+		name = ''
+		// we support adding a generic DOM node as a named child so we can not assume that child identifies its name in any way so
+		// we have to iterate the named children and see if we find child
+		for (const cName of parent.mounted) if (parent[cName]===child) {
+			name = cName
+			break;
+		}
+	} else {
+		[childObj,  childEl,  child ] = ComponentNormalize($child);
+	}
 
-	//redomUnmount(parent, parent[name]);
-	const parentEl = getEl(parent);
-	const childEl = getEl(parent[name]);
+
+	if (typeof child.onPreUnmount == 'function')
+		child.onPreUnmount()
+
+	const isDisconnecting = childEl.isConnected;
+
+	if (isDisconnecting)
+		FireDOMTreeEvent(child, 'onPreDisconnected');
+
+	// remove the DOM relation
+	console.assert(!!parentEl && !!childEl && childEl.parentNode===parentEl, "ComponentUnmount ill-specidied relation to tear down", {parent:parent, name, child:child, namedChild:parent&&parent[name], parentEl, childEl})
 	if (childEl.parentNode)
 		parentEl.removeChild(childEl);
 
-	var i = parent.mounted.indexOf(name);
-	if (i != -1) parent.mounted.splice(i,1);
-	if (parent[name].parent === parent)
-		delete parent[name].parent;
-	delete parent[name];
+	if (isDisconnecting)
+		FireDOMTreeEvent(child, 'onDisconnected');
+
+	// remove a named relation
+	if (name && parent[bgComponent]) {
+		if (Array.isArray(parent.mounted)) {
+			const i = parent.mounted.indexOf(name);
+			if (i != -1) parent.mounted.splice(i,1);
+		}
+		delete parent[name];
+	}
+
+	if (child[bgComponent])
+		delete child.parent;
+
+	// remove a unnamed relation
+	if (!name && parent[bgComponent]) {
+		if (Array.isArray(parent.mountedUnamed)) {
+			const i = parent.mountedUnamed.indexOf(child);
+			if (i != -1) parent.mountedUnamed.splice(i,1);
+		}
+	}
+
+	lifeCycleChecker && lifeCycleChecker.mark(child, 'onUnmounted');
+	if (typeof child.onUnmount == 'function')
+		child.onUnmount()
+
 	return child;
+}
+
+// ComponentUnmount the child from its parent and then destroy it
+// Params:
+//    <parent>  : the parent bgComponent of the relationship
+//    <name>    : the name of the child in the context of the parent of undefined if the child is unnamed
+//    <child>   : if <name> is undefined, the child object must be passed in.
+export function ComponentDestroyChild($parent, name, $child) {
+	const childObj = ComponentUnmount($parent, name, $child);
+	typeof childObj.destroy == 'function' && childObj.destroy();
+	return childObj;
+}
+
+export function ComponentReplaceChildren($parent, ...children) {
+	const [parentObj, parentEl, parent] = ComponentNormalize($parent);
+	// TODO: This should be optimized to merge children with the existing children to minimumally change the dom
+	while (parentEl.firstChild)
+		ComponentDestroyChild([parentObj, parentEl, parent], parentEl.lastChild);
+	ComponentMount([parentObj, parentEl, parent], null, children, null);
 }
 
 
@@ -802,3 +994,371 @@ export function ComponentConstruct(...p) {
 		return new global.bg.Component(componentParams);
 	}
 }
+
+export function ComponentTextNode(...p) {
+	redomText(...p);
+}
+
+export function ComponentHtmlNode(...p) {
+	redomHtml(...p);
+}
+
+export function ComponentSetAttr(...p) {
+	redomSetAttr(...p);
+}
+
+export function ComponentGetName(bgComp, terseFlag) {
+	if (!bgComp) return '';
+	const [bgObj, bgEl] = ComponentNormalize(bgComp);
+	if (bgObj && typeof bgObj.name=='string') return bgObj.name;
+	return ComponentParams.makeTagIDClasses(bgEl, terseFlag);
+}
+
+export function ComponentGetMountedName(bgComp, terseFlag) {
+	var mountedName = ComponentGetName(bgComp, terseFlag);
+	var p=getParent(bgComp);
+	while (p) {
+		mountedName = ComponentGetName(p, terseFlag) + '/' + mountedName;
+		p=getParent(p);
+	}
+	return mountedName;
+}
+
+const sLastFire = Symbol.for('bg_sLastFire')
+
+export function FireDOMTreeEvent(startNode, methodName, recurseFlag) {
+	if (!startNode) return;
+	const [bgObj, bgEl, bgComp] = ComponentNormalize(startNode);
+	// if this is the top node being connected/disconnected, debounce the event b/c sometimes it will be fired mutiple times b/c
+	// there is no perfect place to call it from to to get all cases, there is some overlap that would be hard to eliminate
+	if (!recurseFlag) {
+		if (bgComp[sLastFire]==methodName)
+			return;
+		bgComp[sLastFire]=methodName;
+	}
+	lifeCycleChecker && lifeCycleChecker.softMark(bgComp, methodName);
+	if (bgComp[bgComponent])
+		bgComp.mountedName = ComponentGetMountedName(bgComp, true);
+	(typeof bgComp[methodName] == 'function') && bgComp[methodName]();
+	if (bgEl) for (const child of bgEl.children)
+		FireDOMTreeEvent(child, methodName, true);
+}
+
+// The purpose of this class is to generate onconnected and onDisconnected events for bgComponents when they are mounted/unmounted
+// to/from the document.documentElement tree.
+// This implementation uses the MutationObserver to watch all childList changes to the entire DOM tree and checks each added and
+// removed child against the set of nodes that are participating in onConnected and onDisconnected events.
+// There are two problems with this implementation.
+//    problem1: its not very efficient -- each added or removed node is checked against the list of participating nodes
+//    problem2: MutationObserver bundles changes and runs at the end of a tick. For example, Atom removes a WorkspaceItem view from
+//              the document DOM tree and then calls destroy on it. When destroy runs on our view component, its already been removed
+//              but the onDisconnect event will not have fired b/c it will fire at the end of the current tick.
+class DOMTreeConnectWatcher_childListMethod {
+	mutationsToWatch = {childList:true, subtree:true};
+	constructor() {
+		this.watchNodes = new Set();
+		this.watchDom = new MutationObserver((mutations)=>{this.onDOMMutation(mutations);});
+		this.watchDom.observe(document.body, this.mutationsToWatch);
+	}
+
+	addToWatch(node)      {this.watchNodes.add(getEl(node));}
+	removeFromWatch(node) {this.watchNodes.delete(getEl(node));}
+
+	onDOMMutation(mutations) {
+		for (const mutation of mutations) {
+			this.trace && console.log('DOMTreeConnectWatcher_childListMethod'+mutation.type, mutation);
+			for (const addedNode of mutation.addedNodes) {
+				this.trace && console.log('   Adding', addedNode);
+				if (this.watchNodes.has(addedNode) && addedNode.isConnected)
+					FireDOMTreeEvent(addedNode, 'onConnected')
+			}
+			for (const removedNode of mutation.removedNodes) {
+				this.trace && console.log('   Removing', removedNode);
+				if (this.watchNodes.has(removedNode) && !removedNode.isConnected)
+					FireDOMTreeEvent(removedNode, 'onDisconnected')
+			}
+		}
+	}
+}
+
+// The purpose of this class is to generate onconnected and onDisconnected events for bgComponents when they are mounted/unmounted
+// to/from the document.documentElement tree.
+// This implementation does not work because parentNode is a node property and not an 'attribute'
+// I did a test watching unfiltered attribute changes and none change when a node is added to another node (i.e. parentNode changes)
+class DOMTreeConnectWatcher_parentChangeMethod {
+	mutationsToWatch = {attributes:true,attributeFilter:['parentNode'],attributeOldValue:true};
+	constructor() {this.watchDom = new MutationObserver((mutations)=>{this.onDOMMutation(mutations);});}
+	addToWatch(node) {this.watchDom.observe(node, this.mutationsToWatch);}
+	removeFromWatch(node) {
+		// there is no MutationObserver method to remove a node from being watched. Hopefully that is because it only tags the node
+		// so that there is nothing to keep the node from being garbage collected.
+	}
+
+	onDOMMutation(mutations) {
+		for (const mutation of mutations) {
+			if (mutation.target.isConnected)
+				FireDOMTreeEvent(mutation.target, 'onConnected')
+			else
+				FireDOMTreeEvent(mutation.target, 'onDisconnected')
+		}
+	}
+}
+
+// The purpose of this class is to generate onconnected and onDisconnected events for bgComponents when they are mounted/unmounted
+// to/from the document.documentElement tree.
+// This implementation patches the Node and Element prototypes to efficiently fire the onConnected and onDisconnected events
+const sConnectWatchTag  = Symbol.for('DOMTreeConnectWatcher');
+const s_appendChild     = Symbol.for('bg_method_appendChild');
+const s_insertBefore    = Symbol.for('bg_method_insertBefore');
+const s_removeChild     = Symbol.for('bg_method_removeChild');
+const s_replaceChild    = Symbol.for('bg_method_replaceChild');
+const s_append          = Symbol.for('bg_method_append');
+const s_prepend         = Symbol.for('bg_method_prepend');
+const s_replaceChildren = Symbol.for('bg_method_replaceChildren');
+const s_remove          = Symbol.for('bg_method_remove');
+const s_replaceWith     = Symbol.for('bg_method_replaceWith');
+const s_after           = Symbol.for('bg_method_after');
+const s_before          = Symbol.for('bg_method_before');
+class DOMTreeConnectWatcher_nodePrototypePatchMethod {
+	constructor() {
+		// From Parent (older API from Node)
+		this.install(Node.prototype, s_appendChild,  'appendChild');
+		this.install(Node.prototype, s_insertBefore, 'insertBefore');
+		this.install(Node.prototype, s_removeChild,  'removeChild');
+		this.install(Node.prototype, s_replaceChild, 'replaceChild');
+
+		// From Parent (newer API from ParentNode interface implemented in Element)
+		this.install(Element.prototype, s_append, 'append');
+		this.install(Element.prototype, s_prepend, 'prepend');
+		this.install(Element.prototype, s_replaceChildren, 'replaceChildren');
+
+		// From child (newer API from ChildNode interface implemented in Element)
+		this.install(Element.prototype, s_remove, 'remove');
+		this.install(Element.prototype, s_replaceWith, 'replaceWith');
+		this.install(Element.prototype, s_after, 'after');
+		this.install(Element.prototype, s_before, 'before');
+	}
+	destroy() {
+		this.uninstall(Node.prototype, s_appendChild,  'appendChild');
+		this.uninstall(Node.prototype, s_insertBefore, 'insertBefore');
+		this.uninstall(Node.prototype, s_removeChild,  'removeChild');
+		this.uninstall(Node.prototype, s_replaceChild, 'replaceChild');
+
+		this.uninstall(Element.prototype, s_append, 'append');
+		this.uninstall(Element.prototype, s_prepend, 'prepend');
+		this.uninstall(Element.prototype, s_replaceChildren, 'replaceChildren');
+
+		this.uninstall(Element.prototype, s_remove, 'remove');
+		this.uninstall(Element.prototype, s_replaceWith, 'replaceWith');
+		this.uninstall(Element.prototype, s_after, 'after');
+		this.uninstall(Element.prototype, s_before, 'before');
+	}
+
+	addToWatch(node)      {node[sConnectWatchTag]=true;}
+	removeFromWatch(node) {delete node[sConnectWatchTag];}
+
+	// private helper methods
+	install(  obj, sName,name) {obj[sName] = obj[name];  obj[name] = this[name];}
+	uninstall(obj, sName,name) {obj[name] = obj[sName];}
+
+	// Node.prototype Methods
+	// 'this' is the parent in these methods
+
+	appendChild(child,...p) {
+		if (!child[sConnectWatchTag] || !this.isConnected) return this[s_appendChild](child,...p);
+		const isConnecting = (!child.isConnected );
+		const result = this[s_appendChild](child,...p);
+		isConnecting && FireDOMTreeEvent(child, 'onConnected');
+		return result;
+	}
+	insertBefore(child, ref,...p) {
+		if (!child[sConnectWatchTag] || !this.isConnected) return this[s_insertBefore](child, ref,...p);
+		const isConnecting = (!child.isConnected );
+		const result = this[s_insertBefore](child, ref,...p);
+		isConnecting && FireDOMTreeEvent(child, 'onConnected');
+		return result;
+	}
+	removeChild(child,...p) {
+		if (!child[sConnectWatchTag] || !this.isConnected) return this[s_removeChild](child,...p);
+		const result = this[s_removeChild](child,...p);
+		FireDOMTreeEvent(child, 'onDisconnected');
+		return result;
+	}
+	replaceChild(newChild,oldChild,...p) {
+		if ((!oldChild[sConnectWatchTag] && !newChild[sConnectWatchTag]) || !this.isConnected) return this[s_replaceChild](newChild,oldChild,...p);
+		const isDisconnecting = (oldChild[sConnectWatchTag]);
+		const isConnecting    = (newChild[sConnectWatchTag] && !newChild.isConnected );
+		const result = this[s_replaceChild](newChild,oldChild,...p);
+		isDisconnecting && FireDOMTreeEvent(oldChild, 'onDisconnected');
+		isConnecting    && FireDOMTreeEvent(newChild, 'onConnected');
+		return result;
+	}
+
+	// Element.prototype Methods from ParentNode interface
+	// 'this' is the parent in these methods
+
+	append(...children) {
+		if (!this.isConnected) return this[s_append](...children);
+		const connectingChildren = [];
+		for (const child of children) if (child[sConnectWatchTag] && !child.isConnected)
+			connectingChildren.push(child);
+		const result = this[s_append](...children);
+		for (const child of connectingChildren)
+			FireDOMTreeEvent(child, 'onConnected');
+		return result;
+	}
+	prepend(...children) {
+		if (!this.isConnected) return this[s_prepend](...children);
+		const connectingChildren = [];
+		for (const child of children) if (child[sConnectWatchTag] && !child.isConnected)
+			connectingChildren.push(child);
+		const result = this[s_prepend](...children);
+		for (const child of connectingChildren)
+			FireDOMTreeEvent(child, 'onConnected');
+		return result;
+	}
+	replaceChildren(...children) {
+		if (!this.isConnected) return this[s_replaceChildren](...p);
+		const connectingChildren = [];
+		const disconnectingChildren = [];
+		for (const child of children) if (child[sConnectWatchTag] && !child.isConnected)
+			connectingChildren.push(child);
+		for (const child of this.children) if (child[sConnectWatchTag] && child.isConnected)
+			disconnectingChildren.push(child);
+		const result = this[s_replaceChildren](...children);
+		for (const child of disconnectingChildren)
+			FireDOMTreeEvent(child, 'onDisconnected');
+		for (const child of connectingChildren)
+			FireDOMTreeEvent(child, 'onConnected');
+		return result;
+	}
+
+	// Element.prototype Methods from ChildNode interface
+	// 'this' is the child in these methods
+
+	remove(...p) {
+		if (!this[sConnectWatchTag] || !this.isConnected) return this[s_remove](...p);
+		const result = this[s_remove](...p);
+		FireDOMTreeEvent(this, 'onDisconnected');
+		return result;
+	}
+	replaceWith(...children) {
+		if (!this.isConnected) return this[s_replaceWith](...children);
+		const connectingChildren = [];
+		for (const child of children) if (child[sConnectWatchTag] && !child.isConnected)
+			connectingChildren.push(child);
+		const result = this[s_replaceWith](...children);
+		FireDOMTreeEvent(this, 'onDisconnected');
+		for (const child of connectingChildren)
+			FireDOMTreeEvent(child, 'onConnected');
+		return result;
+	}
+	after(...children) {
+		if (!this.isConnected) return this[s_after](...children);
+		const connectingChildren = [];
+		for (const child of children) if (child[sConnectWatchTag] && !child.isConnected)
+			connectingChildren.push(child);
+		const result = this[s_after](...children);
+		for (const child of connectingChildren)
+			FireDOMTreeEvent(child, 'onConnected');
+		return result;
+	}
+	before(...children) {
+		if (!this.isConnected) return this[s_before](...children);
+		const connectingChildren = [];
+		for (const child of children) if (child[sConnectWatchTag] && !child.isConnected)
+			connectingChildren.push(child);
+		const result = this[s_before](...children);
+		for (const child of connectingChildren)
+			FireDOMTreeEvent(child, 'onConnected');
+		return result;
+	}
+}
+//const domTreeChanges = new DOMTreeConnectWatcher_childListMethod();
+const domTreeChanges = new DOMTreeConnectWatcher_nodePrototypePatchMethod();
+
+global.domTreeChanges = domTreeChanges;
+
+
+
+export class LifecycleChecker extends Map {
+	get(obj) {
+		obj.name
+		var node = super.get(obj);
+		if (!node) {
+			node = {obj, __proto__:null};
+			this.set(obj, node);
+		}
+		return node;
+	}
+	mark(obj, event) {
+		const node = this.get(obj);
+		if (!(event in node))
+			node[event]=0;
+		node[event]++;
+	}
+	softMark(obj, event) {
+		const node = super.get(obj);
+		if (node) {
+			if (!(event in node))
+				node[event]=0;
+			node[event]++;
+		}
+	}
+	logStatus() {
+		var objsConnected=[];
+		var objsLive=[];
+		var cntDestroyed=0;
+		const objsViolations = [];
+		for (const [obj,node] of this) {
+			const [bgObj,bgEl,bgComp] = ComponentNormalize(obj);
+			if (bgEl && ((node.onConnected||0)-(node.onDisconnected||0))>0) {
+				if (!bgEl || !bgEl.isConnected) {node.violation = "not connected but events indicate it should be"; objsViolations.push(node)}
+				objsConnected.push(node);
+			} else if (bgEl && bgEl.isConnected) {
+				node.violation = "connected but onConnected/onDisconnected events indicate it should not be"; objsViolations.push(node)
+			} else if (node.destroyed && ((node.onMounted||0)-(node.onUnmounted||0))>0) {
+				node.violation = "unbalanced onMounted/onUnmounted events on a destroyed node, "; objsViolations.push(node)
+			} else if (node.ctor!=1
+					|| node.destroyed>1
+					|| node.onConnected<node.onDisconnected) {
+				node.violation = "general logic error in events seen"
+				objsViolations.push(node);
+			}
+
+			if (!node.destroyed)
+				objsLive.push(node);
+			else
+				cntDestroyed++;
+		}
+		console.log((''+this.size).padStart(6)    +' : tracked instances');
+		console.log((''+objsLive.length).padStart(6)                    +' : currently alive');
+		console.log((''+objsConnected.length).padStart(6)               +' : currently connected');
+		console.log((''+objsViolations.length).padStart(6)              +' : in violation', objsViolations);
+	}
+	getConnected() {
+		var objs=[];
+		for (const [obj,node] of this) if (((node.onConnected||0)-(node.onDisconnected||0))>0)
+			objs.push(node);
+		return objs;
+	}
+	getLive() {
+		var objs=[];
+		for (const [obj,node] of this) if (!node.destroyed)
+			objs.push(node);
+		return objs;
+	}
+	getDestroyed() {
+		var objs=[];
+		for (const [obj,node] of this) if (node.destroyed)
+			objs.push(node);
+		return objs;
+	}
+	purgeDestroyed() {
+		for (const [obj,node] of this) if (node.destroyed && !node.violation)
+			this.delete(obj);
+	}
+}
+export var lifeCycleChecker
+if (true)
+	lifeCycleChecker = new LifecycleChecker();

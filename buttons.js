@@ -1,5 +1,4 @@
-import { el } from 'redom';
-import { Component } from './component'
+import { Component } from './component'   // for RadioButtonGroup
 import { ComponentParams, reHTMLContent } from './componentUtils'
 import { Disposables } from './Disposables'
 
@@ -13,7 +12,7 @@ import { Disposables } from './Disposables'
 //        <tagName> : $<tagName> default is 'button'
 //        <id>      : #<idName> the html id of the button
 //        <classes> : .<class1>.<class1> ... extra classes to add to the button
-//        <label>   : ' '<label> After a space, everything else is the label to be displyed in the button
+//        <label>   : ' '<label> After a space, everything else is the label to be displayed in the button
 //        <icon>    : ' 'icon-<iconName> If the label begins with 'icon-' it is interpretted as an icon name to be displyed in the button
 //    <onActivatedCB>(btn) : (default for unnamed function parameters) a callback function invoked when this button is activated
 //                 by click or keyboard. The button component that fires the callback is passed to the callback.
@@ -29,22 +28,25 @@ export class Button {
 	constructor(tagIDClasses,  ...p) {
 		var componentParams = new ComponentParams({
 			tagIDClasses: '$button.btn',
-			paramNames  : 'focusOnMouseClick',
+			paramNames  : 'focusOnMouseClick,icon',
 			nameForCB   :'onActivatedCB'
 		}, tagIDClasses, ...p);
 
+		if (componentParams.optParams.icon)
+			componentParams.className += " icon "+componentParams.optParams.icon;
+
+		// b/c we pass in 'this' to makeHtmlNode it will initialize this with all the properties expected of a bgComponent. We do
+		// this before setting any other this.props so that the memory layout of all bgComponent will share a common layout up to
+		// that point. This is not functional in the code but may aid in some transparent runtime optimizations.
+		// properties set: name, mounted, mountedUnamed, el, bgComponent
+		componentParams.makeHtmlNode(this);
+
 		this.disposables = new Disposables();
 		this.componentParams = componentParams;
-
-		this.name          = componentParams.name;
-		this.iconName      = componentParams.optParams.icon;
-		this.onActivatedCB = componentParams.getCompositeCB(false, 'onActivatedCB');
 		this.optParams     = componentParams.optParams;
 
-		if (this.iconName)
-			componentParams.className += " icon "+this.iconName;
-
-		this.el = el(componentParams.makeREDOMTagString(), Object.assign({}, componentParams.props, {style:componentParams.style}));
+		this.iconName      = componentParams.optParams.icon;
+		this.onActivatedCB = componentParams.getCompositeCB(false, 'onActivatedCB');
 
 		this.setLabel(componentParams.optParams.label);
 		this.el.onclick = (e)=>{this.rawOnClick(e)};
@@ -58,6 +60,7 @@ export class Button {
 	destroy() {
 		this.disposables.dispose();
 		deps.objectDestroyed(this);
+		this.componentParams.destroyHtmlNode(this);
 	}
 
 	rawOnClick(e) {
@@ -72,14 +75,14 @@ export class Button {
 		this.onActivatedCB && this.onActivatedCB(this, e);
 	}
 
-	getLabel() {return this.label}
+	getLabel() {return this.label || ''}
 
 	setLabel(label) {
 		this.label = label || '';
 		if (reHTMLContent.test(this.label))
 			this.el.innerHTML = this.label;
 		else
-			this.el.innerText = this.label
+			this.el.innerText = this.label;
 	}
 }
 

@@ -209,8 +209,8 @@ export class DependentsGraph {
 	_normalizeSourceObject($obj) {
 		if (!$obj)
 			return [];
-		if (typeof $obj.obj != 'undefined' && $obj.channel != 'undefined') {
-			return [$obj.obj, $obj.channel];
+		if (typeof $obj.obj != 'undefined' && typeof $obj.channel != 'undefined') {
+			return [$obj.obj, $obj.channel || this.fAll];
 		} else {
 			return [$obj, this.fAll];
 		}
@@ -238,12 +238,34 @@ export class DependentsGraph {
 		const cnode1 = this.getCNode(obj1, channel);
 		const onode2 = this.getONode(obj2);
 
+		// if we are registering this relationship a second time, what should we do?
+		//    option1: replace the previous callback.  This seems correct for the design going forward
+		//    option2: merge the propagationFn so that both will be called.  This is correct for legacy integration like BGAtomView
+		//         where onDidChangeTitle gets called from atom workspace and the tab view but we dont have engough information to
+		//         glean the obj2 so we hard coded it to atom.workspace.
+		//         PROBLEM: when one of the calls deregisters, they both will be removed
+		// In either case we need to clenup the bglinks from the prevPropFn
+		const prevPropFn = cnode1.targets.get(obj2);
+		if (prevPropFn) {
+			onode2.bkLinks.delete(prevPropFn.bkobj);
+			//(this does not work b/c deregistration) propagationFnParams={prevPropFn, ...propagationFnParams}
+		}
+
 		const propagationFn = this.createPropagationFn(cnode1, onode2, propagationFnParams);
+
 		cnode1.targets.set(obj2, propagationFn);
 		propagationFn.bkobj = {obj1,channel,backMap:cnode1.targets};
 		onode2.bkLinks.add(propagationFn.bkobj);
 
 		return cnode1;
+	}
+
+	// this is a convience method for integrating with other people's code that uses the pattern that  has callbak register methods
+	// that return a disposable to undo the registration. Note that because deps always have obj1 and ob2 associated with them
+	// we can undo them whenever obj1 or obj2 is destroyed so add() does not retrurn a disposable.
+	addWithDispose($obj1, obj2, propagationFnParams) {
+		this.add($obj1, obj2, propagationFnParams);
+		return new Disposables(()=>{this.remove($obj1, obj2)})
 	}
 
 	// removed the dependency relationship between obj1 and obj2
@@ -290,20 +312,21 @@ export class DependentsGraph {
 		console.log('DependentsGraph Status for <obj>=',{obj});
 		console.log('<obj> receives change propagation from these objects');
 		if (onode && onode.bkLinks.size>0) {
-			for (const {obj1,channel,backMap} of onode.bkLinks)
-				console.log('   <...',{obj1,channel});
+			for (const {obj1,channel,backMap} of onode.bkLinks) {
+				console.log('   < obj1:%O channel:%O fn:%O',obj1,channel,backMap.get(obj));
+			}
 		} else
-			console.log('    < <none>');
+			console.log('    <none>');
 
 		console.log('<obj> propagates changes to these objects...');
 		if (onode && onode.channels.size>0) {
 			for (const [channel, cnode] of onode.channels) {
 				console.log('   channel:'+channel.toString());
 				for (const [obj2, propagationFn] of cnode.targets)
-					console.log('   >...',{obj2, propagationFn});
+					console.log('   > obj2:%O fn:%O',obj2, propagationFn);
 			}
 		} else
-			console.log('    > <none>');
+			console.log('    <none>');
 
 		const changingCnodes = this.getChangesInProgress();
 		if (changingCnodes.length > 0) {
@@ -455,6 +478,9 @@ export class DependentsGraph {
 
 				if (params.propagationFn)
 					fn = (...p)=>params.propagationFn(...p);
+
+				if (params.prevPropFn)
+					fn = (...p)=>{params.prevPropFn(...p);fn(...p)};
 
 				if (typeof params.debounce != "undefined") {
 					let timeout;

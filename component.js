@@ -1,7 +1,19 @@
-import { el, unmount as redomUnmount, setChildren as redomSetChildren, setAttr, text } from 'redom';
-import { ComponentParams, ComponentMount, ComponentUnmount, bgComponent, reHTMLContent } from './componentUtils'
+import { ComponentParams, ComponentMount, ComponentUnmount, ComponentHtmlNode, ComponentTextNode,
+		 ComponentReplaceChildren, ComponentSetAttr, bgComponent, reHTMLContent, ComponentGetMountedName,
+		 lifeCycleChecker } from './componentUtils'
 import { Disposables } from './Disposables'
 import { RegisterGlobalService } from './GlobalServices'
+
+// LifeTest tracks all Component instances and records when significant state tranisitions ocur. When this is enabled, none of them
+// will be garbage collected b/c the tracking mechanism keeps strong references to each component.
+// If destroy is called on a component, we assume that it and its coresponding dom object will be eligible for GC but that is not
+// necessarily true. If destroy has not been called, they difinately wont be GC'd so making sure destroy is called is the first step.
+const LifeTest=true;
+
+// GCTest uses the FinalizationRegistry to track how many component instances have been garbage collected vs created. FinalizationRegistry
+// is not yet available in nodejs. Its available in nodejs 13.x with a harmony flag.
+const GCTest  =true && (global.FinalizationRegistry);
+
 
 // Component is a base class to make writing DOM components easier.
 // The spirit of this Component class is that writing interactive UI applications in Javascript, be they delivered by web or be they
@@ -82,6 +94,16 @@ import { RegisterGlobalService } from './GlobalServices'
 // Usage:
 //    new Component(<tagIDClasses> [,<content>] [,options] [,<callback>])
 export class Component {
+	static logStatus() {
+		if (!GCTest && !LifeTest) {
+			console.log('no runtime debugging information for Components are enabled. See component.js GCTest and LifeTest constants');
+		}
+
+		GCTest && console.log((''+Component.unCollectedCount).padStart(6)+' : instances not yet garage collected');
+
+		lifeCycleChecker && lifeCycleChecker.logStatus();
+	}
+
 	constructor(tagIDClasses, options, ...moreOptionsOrParamNames) {
 		const componentParams = new ComponentParams(tagIDClasses, options, ...moreOptionsOrParamNames);
 
@@ -89,22 +111,32 @@ export class Component {
 		if (componentParams.Constructor && componentParams.Constructor  != new.target)
 			return new componentParams.Constructor(componentParams);
 
-		this.componentParams = componentParams;
-		this.defaultChildType = componentParams.defaultConstructor;
+		// b/c we pass in 'this' to makeHtmlNode it will initialize this with all the properties expected of a bgComponent. We do
+		// this before setting any other this.props so that the memory layout of all bgComponent will share a common layout up to
+		// that point. This is not functional in the code but may aid in some transparent runtime optimizations.
+		// properties set: name, mounted, mountedUnamed, el, bgComponent
+		componentParams.makeHtmlNode(this)
+
 		this.disposables = new Disposables();
-		this[bgComponent] = true;
-		this.mounted          = [];
-		this.mountedUnamed    = [];
-
-		this.name = this.componentParams.name;
+		this.componentParams = componentParams;
 		this.optParams = this.componentParams.optParams;
-
-		// we are probably ready to end this dependency on redom since we have already done the tough work of creating the construction data.
-		this.el = el(this.componentParams.makeREDOMTagString(), Object.assign({}, this.componentParams.props, {style:this.componentParams.styles}));
+		this.defaultChildType = componentParams.defaultConstructor;
 
 		this.setLabel(this.componentParams.optParams.label);
 
+		this.mountedName = ComponentGetMountedName(this, true);
+		if (GCTest) {
+			Component.instFinalChecker.register(this);
+			Component.unCollectedCount++;
+		}
+
 		this.mount(this.componentParams.content);
+	}
+
+	destroy() {
+		this.disposables.dispose();
+		deps.objectDestroyed(this);
+		this.componentParams.destroyHtmlNode(this);
 	}
 
 	// add children to this Component.
@@ -144,59 +176,61 @@ export class Component {
 		return ComponentMount(this, p1, p2, p3)
 	}
 
-	// remove a child from this Component by name
-	// if a child is unamed, you cant remove it with this function but you could still find its DOM element and remove it that way.
-	unmount(name) {
-		return ComponentUnmount(this, name)
+	// remove a child from this Component. only one of the two parameters should be specified
+	// Params:
+	//    <name>         : the string name of the child in the context of this parent
+	//    <unnamedChild> : if the child is unnamed, the child's object is passed as the second parameter
+	unmount(name, unnamedChild) {
+		return ComponentUnmount(this, name, unnamedChild);
 	}
 
-	setChildren(children) {
-		redomSetChildren(this, children || []);
+	replaceChildren(...children) {
+		ComponentReplaceChildren(this, ...children);
 	}
 
 	// override these to take actions when the component is added or removed from the DOM
-	onmount() {}
-	onunmount() {}
-	onremount() {}
+	// mount/unmount events happen when the node is attached or removed from its direct parent
+	// connected events happen when the node is part of a subtree that is mounted or unmounted to the main tree starting at document.documentElement
+	onPreMount() {}
+	onMount() {}
+	onPreUnmount() {}
+	onUnmount() {}
+	onConnected() {}
+	onDisconnected() {}
 
-	getLabel() {
-		return this.label || '';
-	}
+	getLabel() {return this.label || ''}
 
 	setLabel(label) {
-		this.label = label;
+		this.label = label || '';
 		if (reHTMLContent.test(this.label))
 			this.el.innerHTML = this.label;
 		else
-			this.el.textContent = this.label;
+			this.el.innerText = this.label;
 	}
 
 	fireOnChangeCB(...p) {
 		return this.componentParams.getCompositeCB(true)(...p)
 	}
-
-	destroy() {
-		this.disposables.dispose();
-		deps.objectDestroyed(this);
-		var child;
-		while (child = this.mounted.pop()) {
-			this.unmount(child);
-			typeof child.destroy == 'function' && child.destroy();
-		}
-		while (child = this.mountedUnamed.pop()) {
-			// TODO: replace this (maybe the whiole algorithm, not just this call) with ComponentUnmount
-			redomUnmount(this, child);
-			typeof child.destroy == 'function' && child.destroy();
-		}
-	}
 }
 
 Component.sym = bgComponent;
 Component.mount = ComponentMount;
-Component.unmount = ComponentUnmount
-Component.text = text
-Component.el = el
-Component.setAttr = setAttr
+Component.unmount = ComponentUnmount;
+Component.text = ComponentTextNode;
+Component.el = ComponentHtmlNode;
+Component.setAttr = ComponentSetAttr;
+Component.replaceChildren = ComponentReplaceChildren;
+
+lifeCycleChecker && (Component.lifeCycleChecker=lifeCycleChecker)
+
+
+if (GCTest) {
+	Component.unCollectedCount=0;
+	Component.instFinalChecker = new FinalizationRegistry((heldValue) => {
+		Component.unCollectedCount--;
+	})
+}
+
 
 
 RegisterGlobalService('1.0.0', null, 'bg',       ()=>Object.create(null))

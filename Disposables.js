@@ -5,6 +5,8 @@
 // class's destroy or dispose method, call this.disposables.dispose() or Disposables.DisposeOfMembers(this).
 export class Disposables {
 	static DisposeOfObject(obj) {
+		if (!obj || typeof obj != 'object') return;
+		if (destroyedChecker.has(obj)) return; destroyedChecker.add(obj);
 		if (obj && typeof obj == 'object' && typeof obj.dispose == 'function') {
 			obj.dispose();
 		} else if (obj && typeof obj == 'object' && typeof obj.destroy == 'function') {
@@ -17,15 +19,7 @@ export class Disposables {
 	// transaction.
 	static DisposeOfMembers(obj) {
 		for (const name of Object.getOwnPropertyNames(obj)) {
-			const prop = obj[name];
-			if (prop && typeof prop == 'object' && typeof prop.dispose == 'function') {
-				//console.log(`found ${name} to dispose`);
-				prop.dispose();
-
-			} else if (prop && typeof prop == 'object' && typeof prop.destroy == 'function') {
-				//console.log(`found ${name} to destroy`);
-				prop.destroy();
-			}
+			Disposables.DisposeOfObject(obj[name]);
 		}
 	}
 
@@ -47,11 +41,11 @@ export class Disposables {
 		disposables = disposables.flat();
 		this.cbs=this.cbs.concat(
 			disposables.map((cb)=>{
-				switch (typeof cb) {
+				if (cb) switch (typeof cb) {
 					case 'function': return cb;
 					case 'object':
-						if (typeof cb.dispose == 'function') return cb.dispose.bind(cb);
-						if (typeof cb.destroy == 'function') return cb.destroy.bind(cb);
+						if (typeof cb.dispose == 'function') return ()=>{if (destroyedChecker.has(cb)) return; destroyedChecker.add(cb); cb.dispose();};
+						if (typeof cb.destroy == 'function') return ()=>{if (destroyedChecker.has(cb)) return; destroyedChecker.add(cb); cb.destroy();};
 					case 'null':
 					case 'undefined': return undefined;
 				}
@@ -85,9 +79,17 @@ export class DisposableMap extends Map {
 		Disposables.DisposeOfObject(prevValue);
 		value && super.set(key, value);
 	}
+	setBypass(key, value) {
+		super.set(key, value);
+	}
 	delete(key) {
 		const prevValue = this.get(key);
 		super.delete(key);
 		Disposables.DisposeOfObject(prevValue);
 	}
+	deleteBypass(key) {
+		super.delete(key);
+	}
 }
+
+const destroyedChecker = new WeakSet();
