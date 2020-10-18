@@ -1,5 +1,5 @@
-import { ComponentParams, ComponentMount, ComponentUnmount, ComponentHtmlNode, ComponentTextNode,
-		 ComponentReplaceChildren, ComponentSetAttr, bgComponent, reHTMLContent, ComponentGetMountedName,
+import { ComponentParams, ComponentMount, ComponentUnmount,
+		 ComponentReplaceChildren, bgComponent, reHTMLContent, ComponentGetMountedName,
 		 lifeCycleChecker } from './componentUtils'
 import { Disposables } from './Disposables'
 import { RegisterGlobalService } from './GlobalServices'
@@ -139,10 +139,68 @@ export class Component {
 		this.componentParams.destroyHtmlNode(this);
 	}
 
+
+	// These 4 methods are compatible with the same named methods from DOM:Node (older API from Node)
+
+	// Add the specified child content to the end of this component's children
+	// Params:
+	//    <childContent> : this can be a single child DOM Node/Element just like Node.appendChild but it can also be a variable
+	//            length list of child content and each one can be any bgComponent or a string or an array of Component construction
+	//            parameters.
+	appendChild(...childContent) {
+		ComponentAppendChild(this, ...childContent);
+	}
+
+	// Add the specified child content before the specified <insertBefore> child.
+	// Note that the order of the parameters are reversed compared to the Node.insertBefore which allow a variable number of
+	// <childContent> parameters.
+	// Params:
+	//    <referenceChild> : an existing child of this component that the new <childContent> will be inserted before.
+	//    <childContent> : this can be a single child DOM Node/Element just like Node.appendChild but it can also be a variable
+	//            length list of child content and each one can be any bgComponent or a string or an array of Component construction
+	//            parameters.
+	insertBefore(referenceChild, ...childContent) {
+		ComponentInsertBefore(this, referenceChild, ...childContent);
+	}
+	removeChild(...childContent) {
+		ComponentRemoveChild(this, ...childContent);
+	}
+	replaceChild() {
+		throw new Exception("replaceChild not yet implemented");
+	}
+
+	// From Parent (newer API from ParentNode interface implemented in Element)
+	append(...childContent) {
+		ComponentAppendChild(this, ...childContent);
+	}
+	prepend(...childContent) {
+		ComponentInsertBefore(this, this.el.firstChild, ...childContent)
+	}
+	replaceChildren(...childContent) {
+		ComponentReplaceChildren(this, ...childContent);
+	}
+
+	// From child (newer API from ChildNode interface implemented in Element)
+	remove() {
+		ComponentRemoveChild(this.parent, this);
+	}
+	replaceWith() {
+		ComponentInsertBefore(this.parent, this, ...childContent)
+		this.remove();
+	}
+	after(...childContent) {
+		ComponentInsertBefore(this.parent, this.el.nextSibling, ...childContent)
+	}
+	before(...childContent) {
+		ComponentInsertBefore(this.parent, this, ...childContent)
+	}
+
+
+
 	// add children to this Component.
 	// This is a wrapper over the <domNode>.appendChild/insertBefore methods. It adds two features.
 	//    1. The child content can be specified in more flexible ways
-	//    2. It maintains named links in the prent to the child under these circumstances
+	//    2. It maintains named links in the parent to the child under these circumstances
 	//        * If a name is available for a child node
 	//        * the parent has the [bgComponent] key (indicating that it is opting into this behavior)
 	//
@@ -158,7 +216,7 @@ export class Component {
 	//                                       The one difference is if name is specified and content is an array, the <name> property
 	//                                       created in the parent will be an array with elements poiting to the children. Any
 	//                                       children in the array that have a name property will have a reference added as that
-	//                                       name reardless of whether the array itself is named. Tyically, arrays will not be named
+	//                                       name reardless of whether the array itself is named. Typically, arrays will not be named
 	//                                       and there is no difference between adding the children individually or within an array.
 	// Params:
 	//    name:string          : the variable-like name of the child. If not provided, <childContent>.name will be used. If that
@@ -184,9 +242,7 @@ export class Component {
 		return ComponentUnmount(this, name, unnamedChild);
 	}
 
-	replaceChildren(...children) {
-		ComponentReplaceChildren(this, ...children);
-	}
+
 
 	// override these to take actions when the component is added or removed from the DOM
 	// mount/unmount events happen when the node is attached or removed from its direct parent
@@ -216,9 +272,6 @@ export class Component {
 Component.sym = bgComponent;
 Component.mount = ComponentMount;
 Component.unmount = ComponentUnmount;
-Component.text = ComponentTextNode;
-Component.el = ComponentHtmlNode;
-Component.setAttr = ComponentSetAttr;
 Component.replaceChildren = ComponentReplaceChildren;
 
 lifeCycleChecker && (Component.lifeCycleChecker=lifeCycleChecker)

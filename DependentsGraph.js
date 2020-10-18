@@ -14,10 +14,16 @@ export class ObjectNode {
 		this.channels = new Map();
 		this.bkLinks = new Set();
 		this.disposables = new Disposables();
+		this.legacyDisposablesID = new Set();
 		this._isNew = true;  // will be true if its empty when its retrieved
 	}
 	destroy() {
 		this.disposables.dispose();
+
+		for (const dispID of this.legacyDisposablesID) {
+			this.legacyDisposablesID.delete(dispID);
+			deps.legacyDisposables.delete(dispID);
+		}
 
 		for (const [channel, node] of this.channels)
 			node.destroy;
@@ -70,10 +76,16 @@ export class ChannelNode {
 		this.contextCount = 0;
 		this.params = [];
 		this.disposables = new Disposables();
+		this.legacyDisposablesID = new Set();
 		this._isNew = true;  // will be true if its empty when its retrieved
 	}
 	destroy() {
 		this.disposables.dispose();
+
+		for (const dispID of this.legacyDisposablesID) {
+			this.legacyDisposablesID.delete(dispID);
+			deps.legacyDisposables.delete(dispID);
+		}
 
 		for (const [obj2, propagationFn] of this.targets) {
 			propagationFn.destroy && propagationFn.destroy();
@@ -84,6 +96,8 @@ export class ChannelNode {
 				onode2.bkLinks.delete(propagationFn.bkobj);
 				deps.releaseONode(onode2);
 			}
+			delete(propagationFn.bkobj);
+			delete(propagationFn.destroy);
 		}
 		this.targets.clear();
 
@@ -163,6 +177,8 @@ export class ChannelNode {
 export class DependentsGraph {
 	constructor() {
 		this.nodes = new Map();
+		this.legacyDisposables = new Map();
+		this.legacyDisposablesNextID = 101;
 		this.cnodeClasses = [];
 		this.cnodeClassesExistsCheck = new Set();
 		this.fireCount = 0;
@@ -194,8 +210,8 @@ export class DependentsGraph {
 
 	releaseONode(onode) {
 		if (onode && onode.isEmpty()) {
-			onode.destroy();
 			this.nodes.delete(onode.obj);
+			onode.destroy();
 		}
 	}
 
@@ -248,6 +264,8 @@ export class DependentsGraph {
 		const prevPropFn = cnode1.targets.get(obj2);
 		if (prevPropFn) {
 			onode2.bkLinks.delete(prevPropFn.bkobj);
+			delete(prevPropFn.bkobj);
+			delete(prevPropFn.destroy);
 			//(this does not work b/c deregistration) propagationFnParams={prevPropFn, ...propagationFnParams}
 		}
 
@@ -262,10 +280,22 @@ export class DependentsGraph {
 
 	// this is a convience method for integrating with other people's code that uses the pattern that  has callbak register methods
 	// that return a disposable to undo the registration. Note that because deps always have obj1 and ob2 associated with them
-	// we can undo them whenever obj1 or obj2 is destroyed so add() does not retrurn a disposable.
+	// we can undo them whenever obj1 or obj2 is destroyed so add() does not return a disposable.
 	addWithDispose($obj1, obj2, propagationFnParams) {
-		this.add($obj1, obj2, propagationFnParams);
-		return new Disposables(()=>{this.remove($obj1, obj2)})
+		const cnode1 = this.add($obj1, obj2, propagationFnParams);
+		const onode2 = this.getONode(obj2);
+		const dispID = this.legacyDisposablesNextID++;
+		this.legacyDisposables.set(dispID, [$obj1,cnode1,onode2]);
+		cnode1.legacyDisposablesID.add(dispID);
+		onode2.legacyDisposablesID.add(dispID);
+		return new Disposables(()=>{this.removeByDispose(dispID)})
+	}
+	removeByDispose(dispID) {
+		const [$obj1,cnode1,onode2] = this.legacyDisposables.get(dispID);
+		this.remove($obj1, onode2.obj);
+		this.legacyDisposables.delete(dispID);
+		cnode1.legacyDisposablesID.delete(dispID);
+		onode2.legacyDisposablesID.delete(dispID);
 	}
 
 	// removed the dependency relationship between obj1 and obj2
@@ -292,6 +322,8 @@ export class DependentsGraph {
 			propagationFn && onode2.bkLinks.delete(propagationFn.bkobj);
 			this.releaseONode(onode2);
 		}
+		propagationFn && delete(propagationFn.bkobj);
+		propagationFn && delete(propagationFn.destroy);
 
 		return cnode1;
 	}

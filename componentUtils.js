@@ -1,7 +1,5 @@
 import {
-	text        as redomText,
-	el          as redomHtml,
-	setAttr     as redomSetAttr
+	el          as redomHtml
 } from 'redom';
 
 
@@ -974,12 +972,30 @@ export function ComponentDestroyChild($parent, name, $child) {
 	return childObj;
 }
 
-export function ComponentReplaceChildren($parent, ...children) {
+
+export function ComponentAppendChild($parent, ...childContent) {
+	ComponentMount($parent, null, childContent, null);
+}
+
+export function ComponentInsertBefore($parent, referenceChild, ...childContent) {
+	ComponentMount($parent, null, childContent, referenceChild);
+}
+
+export function ComponentRemoveChild($parent, ...childContent) {
+	const results=[];
+	for (const child of childContent) {
+		const oldChild = ComponentDestroyChild($parent, child);
+		oldChild && results.push(oldChild);
+	}
+	return results;
+}
+
+export function ComponentReplaceChildren($parent, ...childContent) {
 	const [parentObj, parentEl, parent] = ComponentNormalize($parent);
-	// TODO: This should be optimized to merge children with the existing children to minimumally change the dom
+	// TODO: This should be optimized to merge childContent with the existing childContent to minimumally change the dom
 	while (parentEl.firstChild)
 		ComponentDestroyChild([parentObj, parentEl, parent], parentEl.lastChild);
-	ComponentMount([parentObj, parentEl, parent], null, children, null);
+	ComponentMount([parentObj, parentEl, parent], null, childContent, null);
 }
 
 
@@ -995,17 +1011,6 @@ export function ComponentConstruct(...p) {
 	}
 }
 
-export function ComponentTextNode(...p) {
-	redomText(...p);
-}
-
-export function ComponentHtmlNode(...p) {
-	redomHtml(...p);
-}
-
-export function ComponentSetAttr(...p) {
-	redomSetAttr(...p);
-}
 
 export function ComponentGetName(bgComp, terseFlag) {
 	if (!bgComp) return '';
@@ -1037,7 +1042,7 @@ export function FireDOMTreeEvent(startNode, methodName, recurseFlag) {
 		bgComp[sLastFire]=methodName;
 	}
 	lifeCycleChecker && lifeCycleChecker.softMark(bgComp, methodName);
-	if (bgComp[bgComponent])
+	if (bgComp[bgComponent] && methodName)
 		bgComp.mountedName = ComponentGetMountedName(bgComp, true);
 	(typeof bgComp[methodName] == 'function') && bgComp[methodName]();
 	if (bgEl) for (const child of bgEl.children)
@@ -1360,5 +1365,5 @@ export class LifecycleChecker extends Map {
 	}
 }
 export var lifeCycleChecker
-if (true)
+if (false)
 	lifeCycleChecker = new LifecycleChecker();
