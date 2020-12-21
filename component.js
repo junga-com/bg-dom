@@ -1,6 +1,19 @@
 import { ComponentParams, ComponentMount, ComponentUnmount,
 		 ComponentReplaceChildren, bgComponent, reHTMLContent, ComponentGetMountedName,
-		 lifeCycleChecker } from './componentUtils'
+		 lifeCycleChecker,
+		 ComponentReplaceChild,
+		 ComponentToEl,
+		 ComponentToBG,
+		 ComponentGetParent,
+		 ComponentNormalize,
+		 ComponentMountAdd,
+		 ComponentDestroyChild,
+		 ComponentAppendChild,
+		 ComponentInsertBefore,
+		 ComponentRemoveChild,
+		 ComponentConstruct,
+		 ComponentGetName
+		} from './componentUtils'
 import { Disposables } from './Disposables'
 import { RegisterGlobalService } from './GlobalServices'
 
@@ -12,7 +25,7 @@ const LifeTest=true;
 
 // GCTest uses the FinalizationRegistry to track how many component instances have been garbage collected vs created. FinalizationRegistry
 // is not yet available in nodejs. Its available in nodejs 13.x with a harmony flag.
-const GCTest  =true && (global.FinalizationRegistry);
+export const GCTest  =true && (global.FinalizationRegistry);
 
 
 // Component is a base class to make writing DOM components easier.
@@ -104,8 +117,8 @@ export class Component {
 		lifeCycleChecker && lifeCycleChecker.logStatus();
 	}
 
-	constructor(tagIDClasses, options, ...moreOptionsOrParamNames) {
-		const componentParams = new ComponentParams(tagIDClasses, options, ...moreOptionsOrParamNames);
+	constructor(...p) {
+		const componentParams = new ComponentParams(...p);
 
 		// this implements dynamic construction where the parameters determine the specific component class to construct
 		if (componentParams.Constructor && componentParams.Constructor  != new.target)
@@ -122,15 +135,25 @@ export class Component {
 		this.optParams = this.componentParams.optParams;
 		this.defaultChildType = componentParams.defaultConstructor;
 
-		this.setLabel(this.componentParams.optParams.label);
-
 		this.mountedName = ComponentGetMountedName(this, true);
 		if (GCTest) {
 			Component.instFinalChecker.register(this);
 			Component.unCollectedCount++;
 		}
 
-		this.mount(this.componentParams.content);
+		// TODO: consider if getLabel/setLabel should be moved to an "Input" class.
+		//       here in Component, it makes sense to do this but label should be something like stringContent
+		//       Some components, specifically input/label call their stringContent 'label'
+		if (this.el && this.componentParams.optParams.label) {
+			this.label = this.componentParams.optParams.label;
+			if (reHTMLContent.test(this.label))
+				this.el.innerHTML = this.label;
+			else
+				this.el.innerText = this.label;
+		}
+
+		if (this.el && this.componentParams.content)
+			this.mount(this.componentParams.content);
 	}
 
 	destroy() {
@@ -165,8 +188,8 @@ export class Component {
 	removeChild(...childContent) {
 		ComponentRemoveChild(this, ...childContent);
 	}
-	replaceChild() {
-		throw new Exception("replaceChild not yet implemented");
+	replaceChild(child, newContent) {
+		ComponentReplaceChild(this, child, newContent);
 	}
 
 	// From Parent (newer API from ParentNode interface implemented in Element)
@@ -234,12 +257,13 @@ export class Component {
 		return ComponentMount(this, p1, p2, p3)
 	}
 
-	// remove a child from this Component. only one of the two parameters should be specified
+	// remove a child from this Component.
+	// this does not destroy the child. the child object is returned
 	// Params:
-	//    <name>         : the string name of the child in the context of this parent
-	//    <unnamedChild> : if the child is unnamed, the child's object is passed as the second parameter
-	unmount(name, unnamedChild) {
-		return ComponentUnmount(this, name, unnamedChild);
+	//    <nameOrChild>  : the child being unmounted. Can be the bgComp (DOM node or BG node) or the string name of the child in
+	//                     the context of this parent
+	unmount(nameOrChild) {
+		return ComponentUnmount(this, nameOrChild);
 	}
 
 
@@ -267,12 +291,34 @@ export class Component {
 	fireOnChangeCB(...p) {
 		return this.componentParams.getCompositeCB(true)(...p)
 	}
+
+	getSize() {
+		var rect=this.el.getBoundingClientRect()
+		return {x:rect.width, y:rect.height}
+	}
+	getClientSize() {
+		return {x:this.el.clientWidth, y:this.el.clientHeight}
+	}
 }
 
+// expose some Component... functions as static methods of component
 Component.sym = bgComponent;
-Component.mount = ComponentMount;
-Component.unmount = ComponentUnmount;
+Component.mount          = ComponentMount;
+Component.unmount        = ComponentUnmount;
 Component.replaceChildren = ComponentReplaceChildren;
+Component.replaceChild   = ComponentReplaceChild;
+Component.toEl           = ComponentToEl;
+Component.toBG           = ComponentToBG;
+Component.getParent      = ComponentGetParent;
+Component.normalize      = ComponentNormalize;
+Component.mountAdd       = ComponentMountAdd;
+Component.destroyChild   = ComponentDestroyChild;
+Component.appendChild    = ComponentAppendChild;
+Component.insertBefore   = ComponentInsertBefore;
+Component.removeChild    = ComponentRemoveChild;
+Component.construct      = ComponentConstruct;
+Component.getName        = ComponentGetName;
+Component.getMountedName = ComponentGetMountedName;
 
 lifeCycleChecker && (Component.lifeCycleChecker=lifeCycleChecker)
 
@@ -284,6 +330,12 @@ if (GCTest) {
 	})
 }
 
+// used to wrap a plain DOM node that was not created as a Component from the beginning
+export class OnDemmandComponent extends Component {
+	constructor(el) {
+		super(ComponentParams.wrapNode, el);
+	}
+}
 
 
 RegisterGlobalService('1.0.0', null, 'bg',       ()=>Object.create(null))
