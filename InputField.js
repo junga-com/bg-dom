@@ -3,7 +3,20 @@ import { ComponentParams, reHTMLContent } from './componentUtils'
 import { Disposables } from './Disposables'
 
 
-
+// InputField is based on the construct of assocating an input tag with its label tag by making the input contained within the label
+// tag. The alternative is to give the input tag an ID and set the 'for' attribute of the label equal to that ID.
+// This Inputfield is a <label> at its top level. The text content used to create this Component is always interpreted as HTML and
+// can optionally contain a simple '<input>' tag as a placeholder for where the actual <input> tag will be in the label's content.
+// If it does not contain an '<input>' tag, then one will be appending at the end.
+// The actual <input> component is passed as the 'inputCntr' property and will be inserted at the placeholder. The 'inputCntr' is
+// typically specified by the derived class (eg. Checkbox or Textbox...) and the text content which determines the location of the
+// 'inputCntr' is typically specified by the user who creates the field.
+// Examples:
+//      new Checkbox("chkbox1: Do you ken it? <input>") // label to the left of checkbox
+//      new Checkbox("chkbox1: <input> Do you ken it?") // label to the right of checkbox
+//
+// The input field passes through the 'value' property and onchange events from its <input> tag so that users of an InputField can
+// treat it as if its the <input> DOM node in most typical cases.
 export class InputField {
 	constructor(...p) {
 		const componentParams = new ComponentParams("$label", ...p, {paramNames:"inputCntr inputCntrTag"});

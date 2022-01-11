@@ -12,14 +12,31 @@ import { OnDemmandComponent } from './component'
 // a view bgComponent could have named members for the various children that make up the view so that they can easily be scripted
 // to provide functionality. myView.expandBtn.click().
 //
+// Terminology:
+//     DOM Node : the native JS object used by the browser. i.e. document.createElement('div') returns a DOM Node.
+//     BGNode   : a JS object that extends a DOM Node. Its 'el' property points to the DOM Node. a weakmap allows ComponentToBG to
+//                navigate from a DOM Node to its BGNode if one exists.
+//     BGComp   : can be either a BGNode or a DOM Node. Its imporatant for the user of this API to be able to work with nodes logically
+//                without having to constantly deal with two objects so function are typically written to receive and return BGComp
 //
+// Hierarchies:
+// DOM Nodes form a well understood tree hierachy. BGNodes form a sparse reflection of the DOM tree hierarchy. Its sparse in two ways.
+// First, in the horizontal dimension, when traversing the children of a BGNode, its DOM Node children that do not have BGNodes will
+// not be traversed. Second, in the vertical dimension, when traversing the direct children of a BGNode, the DOM Node of a child
+// might be a descendant of the DOM Node of the parent. i.e. the BGNode child can skip over some of the parent chain of the DOM Nodes.
 //
-// Exports:
-//      class ComponentParams       : process an arbitrarily long paramether list to reduce it into one set of attributes to create
-//                                    a DOM node and possibly a tree of content underneath it.
-//      function ComponentMount     : attach a child to a parent in the DOM hiearchy
-//      function ComponentUnmount   : deattach a child from a parent
-//      function ComponentConstruct : dynamically construct a component. The class of the component is specified within the parameters
+// The significance of the difference between the DOM Node hierarchy and the BGNode hierarchy is that the DOM hierarchy necessarily
+// reflects the nuances of presentation whereas the BGNode hierarchy is free to more directly represent the logical structure of
+// the data.
+// Example -- A view component node has a checkbox input to toggle some state. Logically, the input is a direct descendant of the
+// view but in order to display it correctly, with ARIA support, we decide to nest the <input> DOM Node within a <label> DOM node.
+// furthermore, we may decide that we have to put the <label> node inside a <div> or <span> to achieve some presentation objective.
+// The code that scripts the view should not have to change based on how we structure the DOM Node for presentation.
+//
+// We often think about HTML defining the structure of the DOM tree and CSS defines the presentation but any web designer knows that
+// that separation is not actually independent. This allows another level of separation so that the BGNode hierarchy can more
+// precisely represent the logical structure.
+//
 
 
 // Navigating the DOM tree.
@@ -935,7 +952,7 @@ export function ComponentMount($parent, p1, p2, p3) {
 			// this block pulls named bgComp components up through unamed components. For example, in a view component you create
 			// a bunch of content, some named so that you can interact wih them in the view's methods but some of the named components
 			// are grouped in unamed panels for display organization. This block makes those unamed panels transparent wrt naming
-			// so that the named components are accesible in the view as if they were not in the nested panels.  
+			// so that the named components are accesible in the view as if they were not in the nested panels.
 			if ((bgComponent in child) && Array.isArray(child.mounted) && !child.root) {
 				var cName;
 				while (cName=child.mounted.shift()) {

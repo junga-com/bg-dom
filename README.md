@@ -1,5 +1,9 @@
 # bg-dom
 
+# 2020-12 Status
+
+This package is becoming stable. It is used by several Atom plugins. I have used it to create a stand alone electron app to analyze my heath insurance plan options and will soon create a web app using it on my nginx based app server.   
+
 # 2020-09 Status
 
 This package was just renamed from bg-atom-redom-ui to bg-dom.  It started as UI code specific to using REDOM in the Atom editor environment but then evolved into something similar and compatible to REDOM but independent and of general use, not just for use in Atom.
@@ -7,6 +11,71 @@ This package was just renamed from bg-atom-redom-ui to bg-dom.  It started as UI
 Since this npm is not dependent on any of my other libraries, I am treating it as the root JS library of my projects. This means that I am putting in some non UI stuff.  I will periodically examine whats in it and decide if some part of it should be broken out into another npm so that it and the DOM components could be used independently in other projects.
 
 # Summary
+
+This is an NPM package that provides a Components library for building user interfaces.  It was originally based on top of the REDOM project but has now grown apart from it.
+
+These are the principles on which this library is based.
+  * provide an additional layer of separation between structure and presentation to handle cases where the HTML vs CSS separation falls short.
+  * use the native DOM where ever possible. Dont wrap things that work fine the way they are.
+  * extend DOM Nodes as transparently as possible. We would rather just make the DOM nodes work as we want them to but we resit the urge to modify prototypes directly.
+  * be linearly independent, meaning that using this technical for DOM composition should not preclude working with the DOM in any other independent way.
+
+Features:
+  * named children. Instead of querying for references, we can construct a logical subset of the DOM tree that has explicit named navigation.
+  * Convenient, efficient expression of the DOM structure through Component class construction.
+  * Plain vanilla JS still works fine. this library provides various ways of efficiently producing features but does not require that they be used over other techniques 
+
+
+
+# Expression of DOM Structure.
+
+Example...
+```
+    const myView = new Component("$div.myView", [
+        "This is a view for something...",
+        new Component("$div.header", {tabindex:-1}, [
+            "<h1>My Heading</h1>".
+        ]),
+        new Component("$div.content", {tabindex:-1}, [
+            new Component("cntr1:$input", {type:"text"}),
+            new Component("cntr2:$input", {type:"checkbox"})
+        ])
+    ]);
+    console.log(myView.cntr1.value);
+    myView.cntr1.value = "something..."
+```
+
+Any web page needs to define the DOM structure that represents the content. HTML is a language to express that structure and it works well for some things. The javascript DOM API also allows creating the DOM structure programmatically but in a tedious, verbose way. This library aims to provide a way to define the DOM structure that retains the best from each of those methods while adding the ability to compose and reuse.
+
+The principle idea is to use JS variable types to flexibly define information about a BGNode in a way that can be composed. To compose a BGNode, you can provide a list of JS variables of arbitrary length (typically as the construction parameters to the Component class). The type of the variable (string, object, or array) determines how it is interpreted and the position in the list determines how conflicting data is resolved.
+
+An object is interpreted as named properties of the component nodes. The data in an object can be explicitly stated as styles, attributes or properties by putting them in sub-objects with those names or they can be placed at the top level and the type of data that it is will be gleaned by the name of the data. Note that it is difficult to precisely describe this because in DOM coding there is an important distinction between 'properties' and 'attributes' even though they are both generic names for the 'data' that make up objects.
+
+An array is interpreted as a list of child content. Each element can be a string which will be converted to a text node or parsed as html depending on whether it starts with a html <tag>, or a BGNode JS Object or a DOM Node JS Object.
+
+A string value is treated as a tagIDClasses string. This is a syntax that allows common properties to be expressed succinctly.
+   `[<name>:][$<tagname>][#<id>][.<classname>...<classname>][ <textOrHTMLContent>]`
+This syntax is designed so that no part is required but if a part is supplied, it must be in the correct order relative to the other parts that are included. The type of each part is determined by a single character. For <name>: the character trails the token but all the other parts have their delimiting character leading the token.
+
+In general, when the same node data (aka property, attribute, style, etc..) is specified more than once in the variable list, the first value encountered will be used for single valued data. Multi-valued data will be a concatenated list of all encountered values. Any particular data may have a unique algorithm to reduce multiple occurrences to its composed value.
+
+Any DOM structure can be expressed using only the generic Component class but it would be tedious to repeat all the attributes and child structure over and over again for common component types. Since the variable list can be composed, we can make a class derived from Component that adds the data specific to a specific convention that we want to support. Think of those classes as a way to save a set of data so that it can be more succinctly expressed. An InputField class is a shortcut for using Component to build up a label element node with various attributes and properties set with a child input element node.
+
+# Named Children
+
+This library introduces the notion of a 'name' property that is similar to an element ID but instead of being unique in the entire page, the name is unique only in its sub tree.
+
+When composing a DOM tree with the Component construction syntax, the name is the first optional field in the tagIDClasses string syntax. When specified, it 1) becomes one of the class names of the element node and 2) creates a named property in its closest named BGNode parent to the node.
+
+In the example in the last section, we are able to set the fist text input element with `myView.cntr1.value = "somthing..."` even though in the DOM tree, the input element is not a direct child of myView.
+
+You name just the components that will be used in scripting so that they can be referenced in code consistently even if the DOM structure needs to change a little to achieve the desired presentation.
+
+In CSS, the name is exposed as a class. Instead of it standing alone as the ID does, the name depends on where it is in the hierarchy so that components can be selected by name by using the descendant operator like `.myView .cntr1`.
+
+
+
+# Old Summary...
 
 This is an NPM package that provides a Components library that is compliant with the Atom style guide and built on top of something that was originally inspired by the REDOM library. I am now calling the components BGComponents which are typically implemented as JS classes inherited from bg-dom::Component but they do not have to be. Any REDOM style component or plain DOM object can participate in the patterns anywhere that a BGComponent is expected.
 
