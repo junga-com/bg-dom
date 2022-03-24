@@ -7,4 +7,8 @@
 if (typeof global.__bgEsmModule__ == 'undefined')
 	global.__bgEsmModule__ = require("esm")
 require = global.__bgEsmModule__(module/* , options */);
-module.exports = require(require('./package.json').module)
+
+if (typeof global.__bgDomModule__ == 'undefined')
+	global.__bgDomModule__= require(require('./package.json').module)
+
+module.exports=global.__bgDomModule__
