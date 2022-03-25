@@ -9,6 +9,6 @@ if (typeof global.__bgEsmModule__ == 'undefined')
 require = global.__bgEsmModule__(module/* , options */);
 
 if (typeof global.__bgDomModule__ == 'undefined')
-	global.__bgDomModule__= require(require('./package.json').module)
+	global.__bgDomModule__ = require(require('./package.json').module)
 
 module.exports=global.__bgDomModule__

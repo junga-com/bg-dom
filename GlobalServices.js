@@ -45,6 +45,7 @@ class PkgInfo {
 		}
 	}
 	logStatusDetails() {
+		this.logStatus(false);
 		this.logStatus(true);
 	}
 }
