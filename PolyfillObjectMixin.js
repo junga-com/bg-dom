@@ -47,8 +47,8 @@ const States = {
 //         You can write methods in the derived class that will be added to the polyfill target object when its installed.
 //         You identify these methods (as opposed to normal methods of the polyfill) by listing them in the propsToReplace array passed
 //         to the super constructor in your derived class constructor.
-//         * in these methods, this.target is the 'this' point of the target object and 'this' is the 'this' point of the polyfill object.
-//         * if you want to invoke the original implementation, use this.target.orig_<methodName>(...)
+//         * in these methods, this is the 'this' pointer of the target object, not the polyfill object that its defined in.
+//         * if you want to invoke the original implementation, use this.orig_<methodName>(...)
 //    Constructing The Derived Class : Create an instance of your derived class with the new operator and then call the install method.
 //         You can provide features to install/uninstall based on a configuration settings or just do it in the global scope of the file.
 export class PolyfillObjectMixin {
