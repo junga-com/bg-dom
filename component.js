@@ -39,9 +39,9 @@ export const GCTest  =true && (global.FinalizationRegistry);
 // Features:
 //    * uses ComponentParams class to create a compact, flexible constructor syntax. (Note you can create your own component base
 //      class that uses ComponentParams to provide compatible constructor syntax
-//    * get/set label with is the direct text content of this node. The label can be easily specified in the construction syntax
+//    * get/set label whichis the direct text content of this node. The label can be easily specified in the construction syntax
 //    * mount/umount methods to add/remove children easily. See Component::mount for details. Lifecyle of children are managed.
-//       ** name children become properties of the component so that code can easily navigate to them via <parent>.<child>.
+//       ** named children become properties of the component so that code can easily navigate to them via <parent>.<childname>.
 //    * collects multiple content/children parameters in the constructor and uses mount() to make them children
 //    * onmount,onunmount, and onremount virtual functions can be overridden (feature from redom)
 //

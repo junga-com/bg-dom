@@ -7,7 +7,7 @@ const GetMode = {NoCreate:true, CreateIfNeeded:false};
 // This is the node object for the dependency graph data structure
 //     this.deps   : is the forward relationship which is a map because it has state embodied in the PropagationFn callback
 //                   the value of the Map entries is a function object that has the signature (obj, ...p) where <obj> is the
-//     this.bkLinks is the reverse relationship which allows us to maintain the graph and no what depends on what
+//     this.bkLinks is the reverse relationship which allows us to maintain the graph and know what depends on what
 export class ObjectNode {
 	constructor(obj) {
 		this.obj = obj;
@@ -117,7 +117,7 @@ export class ChannelNode {
 // anti-pattern. Instead, behavior is returned to the objects themselves as the 'onDepChanged' method which handles the object
 // reacting to one of its dependencies changing state. The 'onDepChanged' method can be seen as the generic catch all for changes.
 // Several optimization patterns are supportted to preserve the state of knowlege through the firing of dependencies through the
-// graph. For is example. The first unoptimized version of an object might receive the onDepChanged msg and then query the state
+// graph. For example -- The first unoptimized version of an object might receive the onDepChanged msg and then query the state
 // of all its dependent objects to calulate what state it is in. This should always work functionally but may result in duplicated
 // work.  A more refined implementation may connect a particular dependency change channel to a particular method which does only
 // what it needs to respond to that specific event.
@@ -129,7 +129,7 @@ export class ChannelNode {
 // The default propagationFn calls <obj2>.onDepChanged(...). The <obj1> class can register integrations with DependentsGraph so that
 // a different <obj2> method will be called that is specific to it and its suportted channels. For example, the atom.config mechanism
 // makes it so <obj2>.onConfigChanged(...) will be called if it exists instead of onDepChanged.  When a relation is added, the propagationFn
-// can be overrided so a very action is taken. Typically, those propagationFn should be kept simple, just calling a specific <obj2>.<method>(),
+// can be overrided so a very specific action is taken. Typically, those propagationFn should be kept simple, just calling a specific <obj2>.<method>(),
 // possibly conditionally to filter out uneeded propagation, and possibly rearranging the arguments to comply with what <method>
 // expects.
 //
@@ -432,7 +432,7 @@ export class DependentsGraph {
 		}
 	}
 
-	// Alternative to changeStart/changeEnd that indicates that obj has changed and its deps should be notified acording to the
+	// Alternative to changeStart/changeEnd that indicates that obj has changed and its deps should be notified according to the
 	// PropagationFn registered for the relationship. note that we do not propagate changes past the first relationship because that
 	// is handled by the PropagationFn of each relationship. The default propagationFn will continue to fire events to its deps if the object
 	// does not implement an onDepChanged but if it does, the onDepChanged implementation is responsible to propagate changes if needed.

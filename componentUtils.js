@@ -831,7 +831,7 @@ ComponentParams.wrapNode = Symbol('skipCtor')
 export function ComponentMount($parent, p1, p2, p3) {
 	// detect form1 and form2
 	var name, childContent, insertBefore;
-	// if p3 is specified the user maust have called with 3 params so it must be form 1
+	// if p3 is specified the user must have called with 3 params so it must be form 1
 	// The only other form 1 cases is when p2 is specified and p1 is a valid name
 	// When p1 is content that happens to also be a valid name and insertBefore is specified, it will be incorrectly classified.
 	const p2Specified = (typeof p2 != 'undefined');
