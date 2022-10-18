@@ -1,9 +1,51 @@
-// This is a Promise compatible class that allows a function to support both Promise and callback patterns. I find functions written
-// to the real Promise class to be hard to follow because the algorithms needs to be written inside the Promise constructor. This
-// allows a bit more declarative coding style.
-// The difference between this and Promise is that it has a default constructor and explict resolve() and reject() methods that can
-// be called explicitly
-// This opens the BGPromise up to using it like an IPC semaphore-like semantics with the await statement.
+// This is a Promise compatible class that allows an async function to support both Promise and callback patterns. I find functions
+// written to the standard java Promise class to be hard to follow because the algorithms needs to be written inside the Promise
+// constructor. This BGPromise class allows a bit more declarative coding style while being backward compatible with the standard
+// Promise pattern.
+//
+// The difference between this and Promise is that it has a default constructor and resolve() and reject() methods that can be
+// called explicitly. This means that the promise object can be created in one step and resolved in a different step (maybe in a
+// different function)
+//
+// This enables two new use cases which Promise does not supoprt.
+//    1) It can be used like an IPC semaphore-like semantics with the await statement.
+//    2) It also makes it easy to write RPC style mechanisms where the the callback/promise object is created on send and stored in
+//       a queue and then incoming msgs are matched up and the callback/promise is called (aka resolved or rejected)
+//
+// Writing Aync Functions:
+// An asyn should should create a new BGPromise and return it. Before returning it should setup so that that promise's resolve or
+// reject methods will eventually be called when the async operation ends (which is typically after the function returns the promise)
+// A low level async operation would typically allow a callback to be passed in.
+// For Example...
+//     // given this 3rd party aync API....
+//     // createAudioFile(settings, callback);
+//
+//     // imagine an AudioDeck class that will use the createAudioFile API
+//     // note that the new function accepts an optional callback. The caller can either pass in a callback as a parameter or use
+//     // the createAFile(settings).then(callback)
+//     class AudioDeck {
+//        // here is the function that wraps the createAudioFile API using the BGPromise pattern
+//        function createAFile(settings,callback) {
+//            var p = new BGPromise().then(callback,callback); // BGPromise::then is a noop if callback is undefined
+//            createAudioFile(settings, (err)=>{
+//               if (!err)
+//                   p.resolve()
+//               else
+//                   p.reject(err)
+//            });
+//        }
+//
+//        // here is the function that wraps the createAudioFile API using the Standard Promise pattern
+//        function createAFile2(settings) {
+//            return new Promise( (resolve,reject)=> {
+//               createAudioFile(settings, (err)=>{
+//                  if (!err)
+//                      resolve()
+//                  else
+//                      reject(err)
+//            });
+//        }
+//
 export class BGPromise {
 	constructor() {
 		this.state = BGPromise.pending;
@@ -33,7 +75,7 @@ export class BGPromise {
 			var prom = onResolvedCB;
 			prom.onResolvedCBList.map((cb)=>{this._addCallbacks(cb,null)})
 			prom.onRejectedCBList.map((cb)=>{this._addCallbacks(null,cb)})
-		} else {
+		} else if (onResolvedCB || onRejectedCB) {
 			this._addCallbacks(onResolvedCB, onRejectedCB)
 		}
 		return this._checkForFire();
@@ -44,7 +86,7 @@ export class BGPromise {
 		return this._checkForFire();
 	}
 
-	// The concept of resetting is new to this type of promise. This base class can be reset manually to reuse it but the reall
+	// The concept of resetting is new to this type of promise. This base class can be reset manually to reuse it but the real
 	// use-case is the BGRepeatablePromise derived class that automatically resets after each resolve. This allows using it in a
 	// loop with await that 'wakes' up each time the promise is resolved.
 	reset() {

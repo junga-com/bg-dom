@@ -84,6 +84,10 @@ export class Button {
 		else
 			this.el.innerText = this.label;
 	}
+
+	addTooltip(text,cmdForKeyBinding) {
+		this.disposables.add(atom.tooltips.add(this.el, {title: text, keyBindingCommand: cmdForKeyBinding}));
+	}
 }
 
 

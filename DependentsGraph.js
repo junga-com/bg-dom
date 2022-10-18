@@ -278,7 +278,7 @@ export class DependentsGraph {
 		return cnode1;
 	}
 
-	// this is a convience method for integrating with other people's code that uses the pattern that  has callbak register methods
+	// this is a convience method for integrating with other people's code that uses the pattern that  has callback register methods
 	// that return a disposable to undo the registration. Note that because deps always have obj1 and ob2 associated with them
 	// we can undo them whenever obj1 or obj2 is destroyed so add() does not return a disposable.
 	addWithDispose($obj1, obj2, propagationFnParams) {

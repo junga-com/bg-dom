@@ -299,6 +299,14 @@ export class Component {
 	getClientSize() {
 		return {x:this.el.clientWidth, y:this.el.clientHeight}
 	}
+
+	addTooltip(text,cmdForKeyBinding) {
+		if (cmdForKeyBinding)
+			this.disposables.add(atom.tooltips.add(this.el, {title: text, keyBindingCommand: cmdForKeyBinding}));
+		else
+			this.disposables.add(atom.tooltips.add(this.el, {title: text}));
+	}
+
 }
 
 // expose some Component... functions as static methods of component
