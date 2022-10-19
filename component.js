@@ -232,7 +232,9 @@ export class Component {
 	//     component : object(w/.el)       : any JS object with a 'el' property (el should be a DOM Node)
 	//     DOMNode   : object(w/.nodeType) : DOMNodes are identified by having a 'nodeType' property
 	//     plain text: string(s[0]!="<")   : Plain text will be appended as a text node.
-	//     html text : string(s[0]=="<")   : HTML test will be converted to a component whose outerHTML is the provided text
+	//                                       Prepend string with '@TEXT' to force it to be treated as plain text and not html
+	//     html text : string(s[0]=="<")   : text starting with '<' will be converted to a component whose outerHTML is the provided text
+	//                                       Prepend string with '@HTML' to force it to be treated as html and not plain text
 	//     multiple Children : array       : multiple children can be given in an array. Each array element can be any of the
 	//                                       supported types including a nested array. Array nesting will not affect how the child
 	//                                       hiearchy is built -- all children will be traversed and added to this component directly.

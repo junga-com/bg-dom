@@ -643,11 +643,15 @@ export class ComponentParams {
 			case 'tagIDClasses':
 				var matched = reContentIDClasses.exec(value);
 				console.assert(!!matched, "invalid tagIDClasses string syntax. ", {name:name,value:value});
+				if (matched) {
+					// the group names in reContentIDClasses correspond to the real attribute names so matched.group can be reduced like
+					// any options object
+					for (var name in matched.groups)
+						this.reduceAttribute(name, matched.groups[name]);
+				} else {
+					console.error("tagIDClasses string did not match regex.", {tagIDClasses:value,regex:reContentIDClasses});
+				}
 
-				// the group names in reContentIDClasses correspond to the real attribute names so matched.group can be reduced like
-				// any options object
-				for (var name in matched.groups)
-					this.reduceAttribute(name, matched.groups[name]);
 				return;
 
 			case 'unnamedCB':
@@ -795,7 +799,9 @@ ComponentParams.wrapNode = Symbol('skipCtor')
 //     component : object(w/.el)       : any JS object with a 'el' property (el should be a DOM Node)
 //     DOMNode   : object(w/.nodeType) : DOMNodes are identified by having a 'nodeType' property
 //     plain text: string(s[0]!="<")   : Plain text will be appended as a text node.
-//     html text : string(s[0]=="<")   : HTML test will be converted to a component whose outerHTML is the provided text
+//                                       Prepend string with '@TEXT' to force it to be treated as plain text and not html
+//     html text : string(s[0]=="<")   : text starting with '<' will be converted to a component whose outerHTML is the provided text
+//                                       Prepend string with '@HTML' to force it to be treated as html and not plain text
 //     multiple Children : array       : multiple children can be given in an array. Each array element can be any of the
 //                                       supported types including a nested array. Array nesting will not affect how the child
 //                                       hiearchy is built -- all children will be traversed and added to this component directly.
@@ -863,14 +869,14 @@ export function ComponentMount($parent, p1, p2, p3) {
 		// string content can be either plain text content or the html describing a subtree (determined by the reHTMLContent RegExp)
 		case 'string':
 			var element;
-			if (reHTMLContent.test(childContent)) {
+			if (/^@HTML/.test(childContent) || reHTMLContent.test(childContent)) {
 				// it begins with an html tag so interpret it as html
 				element = document.createElement('div');
-				element.innerHTML = childContent.trim();
+				element.innerHTML = childContent.trim().replace(/^@HTML/,"");
 				element = element.firstChild;
 			}
 			else
-				element = document.createTextNode(childContent);
+				element = document.createTextNode(childContent.replace(/^@TEXT/,""));
 				//element = text(childContent);
 
 			childContent = element;
