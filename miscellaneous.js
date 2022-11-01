@@ -56,3 +56,23 @@ export class Dragger extends Component {
 		}
 	}
 }
+
+// usage: new BackgroundMessage(<msg> [,"centered"])
+// fills the parent with the msg text in a larger, faded font. Typically used to indicate when there is no data to display in the
+// area. If the second parameter is "centered", the msg text will be centered. Otherwise it is left justistified
+export class BackgroundMessage extends Component {
+	constructor(msg, justification, ...p)
+	{
+		super("$ul.background-message"+((/^center/.test(justification))?".centered":""), ...p);
+		this.mount([new Component("msg:$li "+msg)]);
+	}
+}
+
+
+export function debounce(timeout, func) {
+	let debounceTimer
+	return (...args) => {
+		clearTimeout(debounceTimer)
+		debounceTimer = setTimeout(() => func.apply(this, args), timeout)
+	}
+}

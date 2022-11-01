@@ -8,6 +8,7 @@ import { ComponentParams, ComponentMount, ComponentUnmount,
 		 ComponentNormalize,
 		 ComponentMountAdd,
 		 ComponentDestroyChild,
+		 ComponentDestroyChildren,
 		 ComponentAppendChild,
 		 ComponentInsertBefore,
 		 ComponentRemoveChild,
@@ -135,7 +136,7 @@ export class Component {
 		this.optParams = this.componentParams.optParams;
 		this.defaultChildType = componentParams.defaultConstructor;
 
-		this.mountedName = ComponentGetMountedName(this, true);
+		this.mountedName = ComponentGetMountedName([this, this.el, this], true);
 		if (GCTest) {
 			Component.instFinalChecker.register(this);
 			Component.unCollectedCount++;
@@ -146,10 +147,10 @@ export class Component {
 		//       Some components, specifically input/label call their stringContent 'label'
 		if (this.el && this.componentParams.optParams.label) {
 			this.label = this.componentParams.optParams.label;
-			if (reHTMLContent.test(this.label))
-				this.el.innerHTML = this.label;
+			if (/^@HTML/.test(this.label) || reHTMLContent.test(this.label))
+				this.el.innerHTML = this.label.replace(/^@HTML/,"");
 			else
-				this.el.innerText = this.label;
+				this.el.innerText = this.label.replace(/^@TEXT/,"");
 		}
 
 		if (this.el && this.componentParams.content)
@@ -159,7 +160,7 @@ export class Component {
 	destroy() {
 		this.disposables.dispose();
 		deps.objectDestroyed(this);
-		this.componentParams.destroyHtmlNode(this);
+		this.componentParams.destroyHtmlNode([this, this.el, this]);
 	}
 
 
@@ -171,7 +172,7 @@ export class Component {
 	//            length list of child content and each one can be any bgComponent or a string or an array of Component construction
 	//            parameters.
 	appendChild(...childContent) {
-		ComponentAppendChild(this, ...childContent);
+		ComponentAppendChild([this, this.el, this], ...childContent);
 	}
 
 	// Add the specified child content before the specified <insertBefore> child.
@@ -183,24 +184,24 @@ export class Component {
 	//            length list of child content and each one can be any bgComponent or a string or an array of Component construction
 	//            parameters.
 	insertBefore(referenceChild, ...childContent) {
-		ComponentInsertBefore(this, referenceChild, ...childContent);
+		ComponentInsertBefore([this, this.el, this], referenceChild, ...childContent);
 	}
 	removeChild(...childContent) {
-		ComponentRemoveChild(this, ...childContent);
+		ComponentRemoveChild([this, this.el, this], ...childContent);
 	}
 	replaceChild(child, newContent) {
-		ComponentReplaceChild(this, child, newContent);
+		ComponentReplaceChild([this, this.el, this], child, newContent);
 	}
 
-	// From Parent (newer API from ParentNode interface implemented in Element)
+	// From Parent (newer API from ParentNode interface implemented in Element. these are similar to the older DOM API above)
 	append(...childContent) {
-		ComponentAppendChild(this, ...childContent);
+		ComponentAppendChild([this, this.el, this], ...childContent);
 	}
 	prepend(...childContent) {
-		ComponentInsertBefore(this, this.el.firstChild, ...childContent)
+		ComponentInsertBefore([this, this.el, this], this.el.firstChild, ...childContent)
 	}
 	replaceChildren(...childContent) {
-		ComponentReplaceChildren(this, ...childContent);
+		ComponentReplaceChildren([this, this.el, this], ...childContent);
 	}
 
 	// From child (newer API from ChildNode interface implemented in Element)
@@ -221,6 +222,9 @@ export class Component {
 
 
 	// add children to this Component.
+	// Note that there is a family of methods for adding child content that use this mount method. You may want to use one of those
+	// instead of mount directly. Those methods are named after corresponding DOM functions.
+	//
 	// This is a wrapper over the <domNode>.appendChild/insertBefore methods. It adds two features.
 	//    1. The child content can be specified in more flexible ways
 	//    2. It maintains named links in the parent to the child under these circumstances
@@ -256,7 +260,7 @@ export class Component {
 	//    Form1: <obj>.mount(<name>, <childContent> [,<insertBefore>])
 	//    Form2: <obj>.mount(<childContent> [,<insertBefore>])
 	mount(p1, p2, p3) {
-		return ComponentMount(this, p1, p2, p3)
+		return ComponentMount([this, this.el, this], p1, p2, p3)
 	}
 
 	// remove a child from this Component.
@@ -265,9 +269,13 @@ export class Component {
 	//    <nameOrChild>  : the child being unmounted. Can be the bgComp (DOM node or BG node) or the string name of the child in
 	//                     the context of this parent
 	unmount(nameOrChild) {
-		return ComponentUnmount(this, nameOrChild);
+		return ComponentUnmount([this, this.el, this], nameOrChild);
 	}
 
+	resetContent() {
+		ComponentDestroyChildren([this, this.el, this]);
+		this.setLabel("");
+	}
 
 
 	// override these to take actions when the component is added or removed from the DOM
@@ -284,10 +292,10 @@ export class Component {
 
 	setLabel(label) {
 		this.label = label || '';
-		if (reHTMLContent.test(this.label))
-			this.el.innerHTML = this.label;
+		if (/^@HTML/.test(this.label) || reHTMLContent.test(this.label))
+			this.el.innerHTML = this.label.replace(/^@HTML/,"");
 		else
-			this.el.innerText = this.label;
+			this.el.innerText = this.label.replace(/^@TEXT/,"");
 	}
 
 	fireOnChangeCB(...p) {
@@ -308,11 +316,10 @@ export class Component {
 		else
 			this.disposables.add(atom.tooltips.add(this.el, {title: text}));
 	}
-
 }
 
 // expose some Component... functions as static methods of component
-Component.sym = bgComponent;
+Component.sym            = bgComponent;
 Component.mount          = ComponentMount;
 Component.unmount        = ComponentUnmount;
 Component.replaceChildren = ComponentReplaceChildren;

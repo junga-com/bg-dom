@@ -47,7 +47,7 @@ export function iniParamGetAll(iniFile) {
 				curSect = ini;
 			continue;
 		} else {
-			console.warning(false, 'unknown line syntax encounted reading iniFile', {iniFile,line,lineNo});
+			console.warn(false, 'unknown line syntax encounted reading iniFile', {iniFile,line,lineNo});
 		}
 	}
 	return ini;

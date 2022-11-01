@@ -67,6 +67,8 @@ export class BGPromise {
 	reject(...p) {
 		this.state = BGPromise.rejected;
 		this.p = p;
+		if (this.onRejectedCBList.length == 0)
+		 	throw new Error(p);
 		return this._checkForFire();
 	}
 
@@ -77,6 +79,17 @@ export class BGPromise {
 			prom.onRejectedCBList.map((cb)=>{this._addCallbacks(null,cb)})
 		} else if (onResolvedCB || onRejectedCB) {
 			this._addCallbacks(onResolvedCB, onRejectedCB)
+		}
+		return this._checkForFire();
+	}
+
+	catch(onRejectedCB) {
+		if (typeof onRejectedCB == 'BGPromise') {
+			var prom = onRejectedCB;
+			prom.onRejectedCBList.map((cb)=>{this._addCallbacks(cb,null)})
+			prom.onRejectedCBList.map((cb)=>{this._addCallbacks(null,cb)})
+		} else if (onRejectedCB) {
+			this._addCallbacks(null, onRejectedCB)
 		}
 		return this._checkForFire();
 	}

@@ -2,48 +2,89 @@ import { el as redomHtml } from 'redom';
 import { OnDemmandComponent } from './component'
 
 // Library componentUtils
-// This library implements the core bgdom component functionality that is used by the Compnent and Button (and other?) class
+// This library implements the core bgdom component functionality that is used by the Component and Button (and other?) class
 // hierarchies.
 //
 // bgComponents extend DOM nodes by creating a JS object with an 'el' property that points to its corresponding DOM node. A GC
-// friendly form of backlink, from the DOM node to the JS object is provided by a WeakMap.
+// friendly form of backlink from the DOM node to the JS object is provided by a WeakMap.
 //
 // A major motivation is to allow bgComponents to have named children to make writing functions and methods more natural. For eample,
 // a view bgComponent could have named members for the various children that make up the view so that they can easily be scripted
 // to provide functionality. myView.expandBtn.click().
 //
 // Terminology:
-//     DOM Node : the native JS object used by the browser. i.e. document.createElement('div') returns a DOM Node.
-//     BGNode   : a JS object that extends a DOM Node. Its 'el' property points to the DOM Node. a weakmap allows ComponentToBG to
-//                navigate from a DOM Node to its BGNode if one exists.
-//     BGComp   : can be either a BGNode or a DOM Node. Its imporatant for the user of this API to be able to work with nodes logically
-//                without having to constantly deal with two objects so function are typically written to receive and return BGComp
+//     DOMNode : the native JS object used by the browser. i.e. document.createElement('div') returns a DOMNode.
+//     BGNode   : a JS object that extends a DOMNode. Its 'el' property points to the DOMNode. a weakmap allows ComponentToBG to
+//                navigate from a DOMNode to its BGNode if one exists.
+//                The BGNode objects created by this library additionally has the bgComponent Symbol set which indicates that it
+//                opts into the full navigation system.
+//     BGComp   : can be either a BGNode or a DOMNode. Its imporatant for the user of this API to be able to work with nodes logically
+//                without having to constantly deal with two objects so functions are typically written to receive and return BGComp
+//                objects, and code that receives a BGComp typically uses [myBGNode,myDOMNode,myBGComp] = ComponentNormalize(myBGComp)
+//                when it needs to access features specific to the DOM or internal BG system members.
+//                You can think of it this way. Either a BGNode or DOMNode JS object identifies the logical node but when you want
+//                to use a DOM feature or member variables that are only in the BGNode, you need to work with one specific JS Object
+//                or the other.
 //
 // Hierarchies:
-// DOM Nodes form a well understood tree hierachy. BGNodes form a sparse reflection of the DOM tree hierarchy. Its sparse in two ways.
-// First, in the horizontal dimension, when traversing the children of a BGNode, its DOM Node children that do not have BGNodes will
-// not be traversed. Second, in the vertical dimension, when traversing the direct children of a BGNode, the DOM Node of a child
-// might be a descendant of the DOM Node of the parent. i.e. the BGNode child can skip over some of the parent chain of the DOM Nodes.
+// DOMNodes form a well understood tree hierachy. BGNodes form a sparse reflection of the DOM tree hierarchy. Its sparse in two ways.
+// First, in the horizontal dimension, when traversing the children of a BGNode, its DOMNode children that do not have BGNodes will
+// not be traversed. Second, in the vertical dimension, when traversing the direct children of a BGNode, the DOMNode of a child
+// might be an arbitrarily deep descendant of the DOMNode of the parent. i.e. the BGNode child can skip over some of the parent
+// chain of the DOMNodes.
 //
-// The significance of the difference between the DOM Node hierarchy and the BGNode hierarchy is that the DOM hierarchy necessarily
+// The significance of the difference between the DOMNode hierarchy and the BGNode hierarchy is that the DOM hierarchy necessarily
 // reflects the nuances of presentation whereas the BGNode hierarchy is free to more directly represent the logical structure of
 // the data.
 // Example -- A view component node has a checkbox input to toggle some state. Logically, the input is a direct descendant of the
-// view but in order to display it correctly, with ARIA support, we decide to nest the <input> DOM Node within a <label> DOM node.
+// view but in order to display it correctly, with ARIA support, we decide to nest the <input> DOMNode within a <label> DOM node.
 // furthermore, we may decide that we have to put the <label> node inside a <div> or <span> to achieve some presentation objective.
-// The code that scripts the view should not have to change based on how we structure the DOM Node for presentation.
+// The code that scripts the view should not have to change based on how we structure the DOMNode for presentation.
 //
 // We often think about HTML defining the structure of the DOM tree and CSS defines the presentation but any web designer knows that
 // that separation is not actually independent. This allows another level of separation so that the BGNode hierarchy can more
 // precisely represent the logical structure.
 //
+// BGNode <--> DOMNode Navigation:
+// Given a BGNode we can get to its corresponding DOMNode (aka element) via its 'el' member variable. A BGNode must have an 'el'.
+// The function 'DOMNode ComponentToEl(BGComp)' provides an abstraction for this navigation that also provides error checking and
+// the property of idempotency, meaning that if BGComp has already been converted to its DOMNode it will return it unchanged.
+//
+// Given a DOMNode we can navigate to to its corresponding BGNode using a WeakMap. This allows us to leave the browser's DOMNode
+// object untouched and also will not prevent Garbage Collection (GC) from recovering the pair of objects if nothing else references
+// them.
+//
+// Duck Typing and Opting into the Full Navigation:
+// A BGNode JS object does not have to be any particular type of object. This library duck types them. Many functions of this library
+// will use the 'el' member variable of an object even if that object was not created by this library.
+// However, features that modify the object passed in will not do so unless the object has the bgComponent Symbol set. You can allow
+// third party objects to fully participat in the features of this library by assigning is bgComponent Symbol property.
+//       e.g.   myObj[bgComponent] = true
+//
+// DOM Modification:
+// Even though this library does not modify each individual DOMObject that it works with, the library does modify the DOM's Node
+// and Element prototypes. It does this because it is the only way I can think of to generate efficient triggers for lifecyle
+// methods (like onMount, onUnmount, etc...)
+
+
+
+
+
+
 
 
 // Navigating the DOM tree.
 
-// return the HTMLElement associated with the object passed in
-// A bgComponent can be a DOM node/element or an object that has an 'el' property that is the DOM node/element.
-// Use this instead of <obj>.el when <obj> is of unknown type.
+// usage: DOMNode ComponentToEl(BGComp)
+// return the HTMLElement associated with the object passed in. Use this instead of <obj>.el when <obj> is of unknown type.
+// A BGComp(onent) can itself be a DOM node/element already (in which case it is returned as is) or it can be an object that has
+// an 'el' property that is the DOM node/element (in which case the el member variable is returned).
+// Params:
+//   <BGComp> : this can be any object for which we can navigate to an associated DOMNode. The following are supported
+//              a DOMNode  : if a DOMNode (aka standard DOM element) is passed in, it will be returned.
+//              something with an el member: if the 'el' member is a DOMNode that is returned.
+//              array of objects : if an array is passed in, an array is returned with each member converted to a DOMNode by calling
+//                                 this function on it.
 export function ComponentToEl(component) {
 	if (!component)
 		return null;
@@ -58,29 +99,51 @@ export function ComponentToEl(component) {
 		return ComponentToEl(component.el);
 }
 
-// return the bgComp object associated with <el>.
+// usage: BGNode ComponentToBG(<bgcomp>, <forceFlag>)
+// return the BGNode object associated with <el> (the DOMNode). If there is no BGNode object for this DOMNode, the <forceFlag>
+// determines what to return.
+//
+// How We Associate BGNodes With DOMNodes:
+// To be able to navigate from a DOMNode to its corresponding BGNode, we have to extend the DOMNode. Tradititionally it is problematic
+// to extend the browser's objects but JS now has several facilities that make it more robust.
 // A bgComponent can be a DOM node/element or an object that has an 'el' property that is the DOM node/element. Given an Object with
 // an 'el' property, the el property navigates to the DOM node/element. To go the other way, we use a WeakMap instead of extending the
 // DOM node. An alternate implementation would be to add a WeakRef property to the DOM node/element that points back to the associated
 // object but WeakRef is not yet available in Atom's nodejs version.
 // Params:
-//    <el>        : the element for which to return the corresponding JS object. It can a DOM node or the associated JS object
-//    <forceFlag> : indicate what to return if there is no JS object for this DOM node
+//    <bgcomp>    : typically a DOMNode but could also be a BGNode.
+//    <forceFlag> : indicate what to return if there is no BGNode for a DOMNode passed in
 //                  (default)  : return undefined
-//                  'force'    : return <el>
-//                  'onDemmand': create and return a new JS object for <el>
-export function ComponentToBG(el, forceFlag) {
-	if (!el) return undefined;
-	if (el in el && (nodeType in el.el))
-		return el; // el is the associated object
+//                  'force'    : return <bgcomp> even though its a DOMNode and not a BGNode
+//                  'onDemmand': create and return a new BGNode for <bgcomp>
+//                  'climb'    : climb up the parent chain of bgcomp
+export function ComponentToBG(bgcomp, forceFlag) {
+	// we cant do nothin with nothin
+	if (!bgcomp) return undefined;
+
+	// its already a BGNode
+	if (('el' in bgcomp) && ('nodeType' in bgcomp.el))
+		return bgcomp;
+
+	// this is the typical, direct link
+	var ret=ComponentMap.get(bgcomp);
+	if (ret)
+		return ret;
+
+	// now, what do do if there is no direct link
 	switch (forceFlag) {
-		case 'onDemmand':
-			var ret=ComponentMap.get(el);
-			if (!ret)
-				ret=new OnDemmandComponent(el);
+		case 'climb':
+			if (!('parentElement' in bgcomp))
+				throw Error("bgcomp is not a DOM Node because it has no parentElement member");
+
+			console.assert("please confirm that the 'climb' option to ComponentToBG is working and then remove this assert and the error msg below it");
+			var p=bgcomp;
+			while ((p=p.parentElement) && !(ret=ComponentMap.get(p)));
+			console.warn("check this. ComponentToBG()", {passedIn:bgcomp, foundViaClimb:ret});
 			return ret;
-		case 'force':     return ComponentMap.get(el) || el;
-		default:          return ComponentMap.get(el);
+		case 'onDemmand': return new OnDemmandComponent(bgcomp);
+		case 'force':     return bgcomp;
+		default:          return undefined;
 	}
 }
 const ComponentMap = new WeakMap();
@@ -108,7 +171,11 @@ export function ComponentGetParent(bgComp) {
 //       <el>  : is the DOM object itself.
 //       <either> : is <obj> if it exists or <el> otherwise so that <either> is non-null unless <bgComp> is null
 export function ComponentNormalize(bgComp) {
-	if (bgComp && Array.isArray(bgComp)) return bgComp;
+	if (bgComp && Array.isArray(bgComp)) {
+		if (bgComp.length == 2)
+			bgComp.push(bgComp[0] || bgComp[1]);
+		return bgComp;
+	}
 	if (bgComp && (bgComponent in bgComp))
 		return [bgComp, bgComp.el, bgComp]
 	const el  = ComponentToEl(bgComp);
@@ -124,7 +191,7 @@ export const reVarName      = /^[_a-zA-Z][_a-zA-Z0-9]*$/;
 // reTagIDClasses makes tagName the default text
 // [name:][<tagName>][#<idName>][.className1[.className2...]][ textContent]
 // TODO: 'label' would probably better be renamed to stringContent
-export const reTagIDClasses   = /^((?<name>[_a-zA-Z0-9]*):)?(?<tagName>[-_a-zA-Z0-9]*)?(#(?<idName>[-_a-zA-Z0-9]*))?(?<className>[.][-!_.a-zA-Z0-9]*)?([\s,]((?<icon>icon-[-_a-zA-Z0-9]+)([\s,]|$))?(?<label>.*))?$/;
+//export const reTagIDClasses   = /^((?<name>[_a-zA-Z0-9]*):)?(?<tagName>[-_a-zA-Z0-9]*)?(#(?<idName>[-_a-zA-Z0-9]*))?(?<className>[.][-!_.a-zA-Z0-9]*)?([\s,]((?<icon>icon-[-_a-zA-Z0-9]+)([\s,]|$))?(?<label>.*))?$/;
 
 // reContentIDClasses makes content the default text and changes tagName to require a leading $
 // the re group names are the parameter names. This re must match '' (all groups are optional)
@@ -345,7 +412,7 @@ const knownStyleProperties = {
 //
 //    Each level can add its own information to the parameter list that it received from its caller and pass the combined result
 //    onto its base class. The last base class (which may or may not be Component) uses ComponentParams to reduce the arbitrarily
-//    long parameter list into one normalized set of information that is required to create a new DOM Node and possible a tree of
+//    long parameter list into one normalized set of information that is required to create a new DOMNode and possible a tree of
 //    children underneath it. The Component class puts the resulting set of information in the this.componentParams property so that
 //    it is available in each of the hierarchy's class's constructors after the super() call.
 //
@@ -394,11 +461,13 @@ const knownStyleProperties = {
 // These are the named 'parameters' that can be explicitly specified in a named parameter object that apprears in the
 // 'positional parameter' list. Note that the names that are not in <> are the literal keys that will be recognized. Those that are
 // in <> like <knownStyles> refer to a whole set of names that will be recognized -- in this case any of the CSS style attributes.
-//    tagName       :string     : <tagName> The name of the dom/html element type
+//    tagName       :string     : <tagName> The name of the dom/html element type (e.g. 'div', 'span', 'li', etc...)
 //    name          :string     : the variable name used for a component. Typically this is relative to its parent.
 //    idName        :string     : the id attribute. Not typically used b/c it should only be used when it does not make sense for a page to contain more than one of the component class its used in.
 //    classes       :stringSet  : space separated list of classNames
 //    label         :string     : text that will be set as the direct content of this node. If is starts with an html tag (<div>) it will parsed as html
+//                                if it starts with '@HTML' it will be trested as html
+//                                if it starts with '@TXT' it will be trested as plain text
 //    content       :<multiple> : innerHTML specified in multiple ways -- text, html, DOM node, Component instance, or an array of multiple of those
 //    tagIDClasses  :string(aggregate): combined [<name>:][<tagName>][#<idName>][.<class>[.<class>...]][ <contentTestOrHTML>]
 //    unnamedCB     :function   : a function that will be registered in the component's default callback event.
@@ -430,7 +499,7 @@ const knownStyleProperties = {
 //
 //    Another issue is whether this will create name conflicts if the same name appears in more than one of the 3 subobjects. I know
 //    of no conflict between CSS style and DOM prop names and I think that optNames should not be a problem because they are all
-//    logically attributes of the same component/DOM Node concept. If a component author creates a parameter name with the same
+//    logically attributes of the same component/DOMNode concept. If a component author creates a parameter name with the same
 //    name as a style or prop, they probably are refering to the same thing and need to confront why they are not reusing the builtin
 //    style or property.
 //
@@ -564,7 +633,7 @@ export class ComponentParams {
 		}
 
 		// the content array may have arbitrary nested arrays that could be flattened, but I think its not necessary because
-		// ComponentMount handles it. Nesting arrays do not introduce a correspnding DOM Node layer -- mount will flatten them.
+		// ComponentMount handles it. Nesting arrays do not introduce a correspnding DOMNode layer -- mount will flatten them.
 		// 2020-10 commented this out in support of TODO:344.
 		//         Whether we reverse content determines the order of super( [],...p) or super(...,[]) which
 		//         produces the correct ordering of children added by multiple levels in the component class hierarchy
@@ -642,7 +711,8 @@ export class ComponentParams {
 
 			case 'tagIDClasses':
 				var matched = reContentIDClasses.exec(value);
-				console.assert(!!matched, "invalid tagIDClasses string syntax. ", {name:name,value:value});
+				if (!matched)
+					throw Error("invalid tagIDClasses string syntax. ", {name:name,value:value});
 				if (matched) {
 					// the group names in reContentIDClasses correspond to the real attribute names so matched.group can be reduced like
 					// any options object
@@ -705,6 +775,7 @@ export class ComponentParams {
 		if (this.className) {
 			redomTagStr += "."+this.className.replace(/(^\s+)|(\s+$)/,'').replace(/\s+/g,'.')
 		}
+
 		return redomTagStr || '';
 	}
 
@@ -738,10 +809,10 @@ export class ComponentParams {
 
 
 	// Create the DOM node/element that represents the parsed data in this ComponentParams instance.
-	// If bgComp is passed in, the DOM node/element will be bi-directionally linked with the the bgComp object and the bgComp ojject
-	// will be initialized with the fields expected of full bgComponent object.
+	// If bgComp is passed in, the DOM node/element will be bi-directionally linked with the the bgComp object and the bgComp object
+	// will be initialized with the fields expected of a full bgComponent object.
 	// If bgComp is not provided, the DOM node/element is the bgComp reference. When the DOM node/element is the bgComp, it is lighter
-	// but not all the features of a full bgComponent will be availabel. Full bgComponents tend to be important nodes with your own
+	// but not all the features of a full bgComponent will be available. Full bgComponents tend to be important nodes with your own
 	// application (business logic) level API methods. Light bgComponents tend to be the content tree under full bgComponents.
 	// Member Variables:
 	// When the <bgComp> parameter is passed in, these properties are set in it
@@ -796,7 +867,7 @@ ComponentParams.wrapNode = Symbol('skipCtor')
 //
 // ChildContent Types:
 // Several types of children content are supported.
-//     component : object(w/.el)       : any JS object with a 'el' property (el should be a DOM Node)
+//     component : object(w/.el)       : any JS object with a 'el' property (el should be a DOMNode)
 //     DOMNode   : object(w/.nodeType) : DOMNodes are identified by having a 'nodeType' property
 //     plain text: string(s[0]!="<")   : Plain text will be appended as a text node.
 //                                       Prepend string with '@TEXT' to force it to be treated as plain text and not html
@@ -824,7 +895,7 @@ ComponentParams.wrapNode = Symbol('skipCtor')
 //                     If no name exist, the childContent will be unamed with regard to its parent.
 //                     The special name 'unnamed' is recognized as no name being passed. This is useful in overriding a child's name property
 //    <childContent> : the children to be mounted to this component. It can be given in any of the types described above.
-//    <insertBefore> : (optional) the existing child to insert childContent before as a DOM Node or component object.
+//    <insertBefore> : (optional) the existing child to insert childContent before as a DOMNode or component object.
 //                     Default is append to end of $parent. Unlike the plain DOM API, this can be a non-direct descendant of $parent.
 //                     If you want to mount the child at the end of a descendant node, pass in <insertBefore> as an object with
 //                     the property "appendTo" like... , {appendTo:<descendant node>}).
@@ -869,15 +940,13 @@ export function ComponentMount($parent, p1, p2, p3) {
 		// string content can be either plain text content or the html describing a subtree (determined by the reHTMLContent RegExp)
 		case 'string':
 			var element;
-			if (/^@HTML/.test(childContent) || reHTMLContent.test(childContent)) {
-				// it begins with an html tag so interpret it as html
+			if (/^@HTML/.test(childContent.trim()) || reHTMLContent.test(childContent)) {
 				element = document.createElement('div');
 				element.innerHTML = childContent.trim().replace(/^@HTML/,"");
 				element = element.firstChild;
 			}
 			else
 				element = document.createTextNode(childContent.replace(/^@TEXT/,""));
-				//element = text(childContent);
 
 			childContent = element;
 			break;
@@ -1098,6 +1167,12 @@ export function ComponentDestroyChild($parent, nameOrChild) {
 	return childObj;
 }
 
+// Unmounts all children from $parent and call their .destroy() methods to recover their resources
+export function ComponentDestroyChildren($parent) {
+	const [parentObj, parentEl, parent] = ComponentNormalize($parent);
+	while (parentEl.firstChild)
+		ComponentDestroyChild([parentObj, parentEl, parent], parentEl.lastChild);
+}
 
 export function ComponentAppendChild($parent, ...childContent) {
 	ComponentMount($parent, null, childContent, null);
@@ -1119,8 +1194,7 @@ export function ComponentRemoveChild($parent, ...childContent) {
 export function ComponentReplaceChildren($parent, ...childContent) {
 	const [parentObj, parentEl, parent] = ComponentNormalize($parent);
 	// TODO: This should be optimized to merge childContent with the existing childContent to minimumally change the dom
-	while (parentEl.firstChild)
-		ComponentDestroyChild([parentObj, parentEl, parent], parentEl.lastChild);
+	ComponentDestroyChildren([parentObj, parentEl, parent]);
 	ComponentMount([parentObj, parentEl, parent], null, childContent, null);
 }
 
