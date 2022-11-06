@@ -1,6 +1,10 @@
 import { Disposables } from './Disposables'
 import { RegisterGlobalService } from './GlobalServices'
 
+// CRITICALTODO: This mechanism is almost done and is used by some things (mostly the atom polyfils) but it needs a significant
+//               refactoring to resolve the relation between channels, propagationFn, and propagationFnParams
+
+
 // enum for whether the get[O|C]Node methods should create the node on demand or return undefined if it does not exist
 const GetMode = {NoCreate:true, CreateIfNeeded:false};
 

@@ -1,3 +1,24 @@
+
+export class Disposable
+{
+	constructor(disposeActionFn)
+	{
+		this.disposeActionFn = disposeActionFn;
+		this._disposed = false;
+	}
+
+	dispose()
+	{
+		if (!this._disposed) {
+			this._disposed = true;
+			this.disposeActionFn();
+		}
+	}
+
+	// make destroy() a synonym for dispose()
+	destroy() {this.dispose()}
+}
+
 // This was inspired by the Atom Disposable and CompositeDisposable classes. This adds destroy as a synonym for dispose and treats
 // functions objects the same as <obj>.dispose so that one class does it all.
 // The idea is that if your class needs to keep track of things to cleanup with its objects are destroyed/disposed, then add a
