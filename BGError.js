@@ -2,9 +2,9 @@
 export class BGError extends Error {
 	constructor(txtMsg, ...p)
 	{
-		console.log("BGError: "+error.txtMsg, ...error.p, promise)
 		super(txtMsg);
 		this.p = p;
+		console.error("BGError: "+txtMsg, ...p)
 	}
 }
 

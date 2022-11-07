@@ -1,9 +1,12 @@
+import { BGError } from './BGError'
 
 export class Disposable
 {
-	constructor(disposeActionFn)
+	constructor(disposable)
 	{
-		this.disposeActionFn = disposeActionFn;
+		this.cb = Disposables.GetDisposableFn(disposable);
+		if (!this.cb)
+			throw new BGError("the parameter passed in to Disposable is not disposable. It should be a function or an object with either a dispose() or destroy() method",{disposable})
 		this._disposed = false;
 	}
 
@@ -11,7 +14,8 @@ export class Disposable
 	{
 		if (!this._disposed) {
 			this._disposed = true;
-			this.disposeActionFn();
+			this.cb();
+			this.cb = null;
 		}
 	}
 
@@ -26,11 +30,16 @@ export class Disposable
 // class's destroy or dispose method, call this.disposables.dispose() or Disposables.DisposeOfMembers(this).
 export class Disposables {
 	static DisposeOfObject(obj) {
-		if (!obj || typeof obj != 'object') return;
-		if (destroyedChecker.has(obj)) return; destroyedChecker.add(obj);
-		if (obj && typeof obj == 'object' && typeof obj.dispose == 'function') {
+		if (!obj || typeof obj != 'object')
+			return;
+
+		if (destroyedChecker.has(obj))
+			return;
+		destroyedChecker.add(obj);
+
+		if (       typeof obj.dispose == 'function') {
 			obj.dispose();
-		} else if (obj && typeof obj == 'object' && typeof obj.destroy == 'function') {
+		} else if (typeof obj.destroy == 'function') {
 			obj.destroy();
 		}
 	}
@@ -42,6 +51,23 @@ export class Disposables {
 		for (const name of Object.getOwnPropertyNames(obj)) {
 			Disposables.DisposeOfObject(obj[name]);
 		}
+	}
+	static GetDisposableFn(disp) {
+		switch (typeof disp) {
+			case 'function':
+				return disp;
+			case 'object':
+				if (disp instanceof Disposable)
+					return disp.cb;
+				if (typeof disp.dispose == 'function')
+					return ()=>{if (destroyedChecker.has(disp)) return; destroyedChecker.add(disp); disp.dispose();};
+				if (typeof disp.destroy == 'function')
+					return ()=>{if (destroyedChecker.has(disp)) return; destroyedChecker.add(disp); disp.destroy();};
+				throw new BGError("object pass to Disposables is not disposable because it has niether a dispose() nor a destroy() method str(obj)='"+disp+"'", {obj:disp})
+			case 'null':
+			case 'undefined': return null;
+		}
+		throw new BGError('Parameters passed to Disposable must be a function or an Object with a "dispose" or "destroy" method. parameter='+disp, {parameter:disp})
 	}
 
 	constructor(...disposables) {
@@ -59,20 +85,18 @@ export class Disposables {
 	//                   (null),(undefined) : no action. it will be ignored
 	//                   (other)    : if none of the above, its an invalid <disposable> and an assertion will be thrown.
 	add(...disposables) {
+		// flatten because we support passing in an array of disposables and with the variable args it would be wrapped in another array
 		disposables = disposables.flat();
-		this.cbs=this.cbs.concat(
-			disposables.map((cb)=>{
-				if (cb) switch (typeof cb) {
-					case 'function': return cb;
-					case 'object':
-						if (typeof cb.dispose == 'function') return ()=>{if (destroyedChecker.has(cb)) return; destroyedChecker.add(cb); cb.dispose();};
-						if (typeof cb.destroy == 'function') return ()=>{if (destroyedChecker.has(cb)) return; destroyedChecker.add(cb); cb.destroy();};
-					case 'null':
-					case 'undefined': return undefined;
-				}
-				console.assert(false, 'Parameters passed to Disposable must be a function or an Object with a "dispose" or "destroy" method. parameter='+cb)
-			})
-		);
+
+		for (var disp of disposables) {
+			if (disp instanceof Disposables) {
+				this.cbs.concat(disp.cbs);
+			} else {
+				var cbFn = Disposables.GetDisposableFn(disp);
+				if (cbFn)
+					this.cbs.push(cbFn);
+			}
+		}
 	}
 	dispose() {
 		var cb;
@@ -83,7 +107,7 @@ export class Disposables {
 }
 
 
-// This is a map that will call its element's dispose/destroy methods when they are removed from the map eithr directly or by
+// This is a map that will call its element's dispose/destroy methods when they are removed from the map either directly or by
 // replacement with a new vaule
 export class DisposableMap extends Map {
 	dispose() {
