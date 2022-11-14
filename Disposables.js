@@ -5,8 +5,6 @@ export class Disposable
 	constructor(disposable)
 	{
 		this.cb = Disposables.GetDisposableFn(disposable);
-		if (!this.cb)
-			throw new BGError("the parameter passed in to Disposable is not disposable. It should be a function or an object with either a dispose() or destroy() method",{disposable})
 		this._disposed = false;
 	}
 
@@ -65,7 +63,7 @@ export class Disposables {
 					return ()=>{if (destroyedChecker.has(disp)) return; destroyedChecker.add(disp); disp.destroy();};
 				throw new BGError("object pass to Disposables is not disposable because it has niether a dispose() nor a destroy() method str(obj)='"+disp+"'", {obj:disp})
 			case 'null':
-			case 'undefined': return null;
+			case 'undefined': return ()=>{};
 		}
 		throw new BGError('Parameters passed to Disposable must be a function or an Object with a "dispose" or "destroy" method. parameter='+disp, {parameter:disp})
 	}
@@ -90,7 +88,7 @@ export class Disposables {
 
 		for (var disp of disposables) {
 			if (disp instanceof Disposables) {
-				this.cbs.concat(disp.cbs);
+				this.cbs = this.cbs.concat(disp.cbs);
 			} else {
 				var cbFn = Disposables.GetDisposableFn(disp);
 				if (cbFn)

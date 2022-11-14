@@ -26,11 +26,15 @@ import { Disposables } from './Disposables'
 //    ComponentParams : to see what other parameters are accepted by this class constructor
 export class Button {
 	constructor(tagIDClasses,  ...p) {
-		var componentParams = new ComponentParams({
-			tagIDClasses: '$button.btn',
-			paramNames  : 'focusOnMouseClick,icon',
-			nameForCB   :'onActivatedCB'
-		}, tagIDClasses, ...p);
+		var componentParams = new ComponentParams(
+			{
+				tagIDClasses: '$button.btn',
+				paramNames  : 'focusOnMouseClick,icon',
+				nameForCB   :'onActivatedCB'
+			},
+			tagIDClasses,
+			...p
+		);
 
 		if (componentParams.optParams.icon)
 			componentParams.className += " icon "+componentParams.optParams.icon;
@@ -96,6 +100,11 @@ export class Button {
 // ToggleButton is a two-state, bi-stable button. When activated it toggles between pressed/selected/true and
 // unpressed/unselected/false. The default callback is onStateChangeCB instead of onActivatedCB. onStateChangeCB is passed the
 // pressed state and the button object. The presence of the .selected CSS class determines the component's state and styling.
+// Button Content:
+// The button can be given inner/child content just like any Component but typically, the content of the button would be a text label
+// or an icon like these examples.
+//       new ToggleButton("myButtonName: TheLabelText"); // button displays 'TheLabelText'
+//       new ToggleButton("myButtonName: icon-file");    // button displays the 'file' icon from the available resources (atom has Octicons library)
 // Params:
 // This uses the ComponentParams flexible parameters. The params important to this class are mentioned but others are supported too.
 //    <bgNodeID>  : string in the ComponentParams::<tagIDClasses> format to specify the button name and optionally other things

@@ -1,22 +1,24 @@
-import { ComponentParams, ComponentMount, ComponentUnmount,
-		 ComponentReplaceChildren, bgComponent, reHTMLContent, ComponentGetMountedName,
-		 lifeCycleChecker,
-		 ComponentReplaceChild,
-		 ComponentToEl,
-		 ComponentToBG,
-		 ComponentGetParent,
-		 ComponentNormalize,
-		 ComponentMountAdd,
-		 ComponentDestroyChild,
-		 ComponentDestroyChildren,
-		 ComponentAppendChild,
-		 ComponentInsertBefore,
-		 ComponentRemoveChild,
-		 ComponentConstruct,
-		 ComponentGetName
-		} from './componentUtils'
-import { Disposables } from './Disposables'
+import {
+	ComponentParams, ComponentMount, ComponentUnmount,
+	ComponentReplaceChildren, bgComponent, reHTMLContent, ComponentGetMountedName,
+	lifeCycleChecker,
+	ComponentReplaceChild,
+	ComponentToEl,
+	ComponentToBG,
+	ComponentGetParent,
+	ComponentNormalize,
+	ComponentMountAdd,
+	ComponentDestroyChild,
+	ComponentDestroyChildren,
+	ComponentAppendChild,
+	ComponentInsertBefore,
+	ComponentRemoveChild,
+	ComponentConstruct,
+	ComponentGetName
+}                                from './componentUtils'
+import { Disposables }           from './Disposables'
 import { RegisterGlobalService } from './GlobalServices'
+import { BGError }               from './BGError'
 
 // LifeTest tracks all Component instances and records when significant state tranisitions ocur. When this is enabled, none of them
 // will be garbage collected b/c the tracking mechanism keeps strong references to each component.
@@ -30,12 +32,27 @@ export const GCTest  =true && (global.FinalizationRegistry);
 
 
 // Component is a base class to make writing DOM components easier.
-// The spirit of this Component class is that writing interactive UI applications in Javascript, be they delivered by web or be they
-// local applications, should draw the line of separation between presentation and structure differently than HTML centric designs.
+// The spirit of this Component class is to provide a clean, concise, powerful syntax for the developer to build the DOM structure
+// with interactive components explicitly.
 //
-// This component class does not use a render pattern and does not try to get involved with reducing DOM changes for the developer.
+// Towards this goal there is a notion that for identification purposes a DOM node and a non-DOM object that represents and extends
+// it are the same. The componentUtils library provides efficient bidirectional navigation between them. This Component class provides
+// one possibility of non-DOM object that extends a DOM object but the the meat of this class's implementation is in the componentUtils.js
+// library. The Button Hierachy is another example that is not related to this class but can be used very similarly becasue it also
+// deferes much of its implementation to componentUtils.js. Both DOM nodes and non-DOM objects that use componentUtils.js to extend DOM
+// nodes can be passed arround interchangably. The library functions that operate on these objects take advantage of efficient
+// navigation between the objects that represent the same node.
+//
+// This component class does not use a render pattern and does not try to get involved automagically with reducing DOM changes for
+// the developer.
 // Instead it provides a clean syntax for the developer to create their component instance structure which produces the corresponding
 // DOM structure. The developer then takes the responsibilty of modifying the DOM as needed in response to its own behavior.
+//
+// When building the Component/HTML hierachy the developer can name important components and leave unnamed Components that are not
+// interesting to the interactive operations. This allows the HTML structure to vary without disrupting the code that drives the
+// behavior. Named components become properties of the Parent named component. Code in a Component can always refere to itself even
+// if it is unamed.
+// TODO: the comment above describes a work in progress. The rules for how named references bubble are still forming.
 //
 // Features:
 //    * uses ComponentParams class to create a compact, flexible constructor syntax. (Note you can create your own component base
@@ -107,8 +124,10 @@ export const GCTest  =true && (global.FinalizationRegistry);
 //    ComponentParams
 // Usage:
 //    new Component(<tagIDClasses> [,<content>] [,options] [,<callback>])
-export class Component {
-	static logStatus() {
+export class Component
+{
+	static logStatus()
+	{
 		if (!GCTest && !LifeTest) {
 			console.log('no runtime debugging information for Components are enabled. See component.js GCTest and LifeTest constants');
 		}
@@ -118,8 +137,13 @@ export class Component {
 		lifeCycleChecker && lifeCycleChecker.logStatus();
 	}
 
-	constructor(...p) {
+	constructor(...p)
+	{
 		const componentParams = new ComponentParams(...p);
+
+		// if you give the Component the param {trace:true} it will set this.trace and you can do if (this.trace) console.log(...) ;
+		if (componentParams.trace)
+			this.trace = componentParams.trace;
 
 		// this implements dynamic construction where the parameters determine the specific component class to construct
 		if (componentParams.Constructor && componentParams.Constructor  != new.target)
@@ -142,9 +166,10 @@ export class Component {
 			Component.unCollectedCount++;
 		}
 
-		// TODO: consider if getLabel/setLabel should be moved to an "Input" class.
-		//       here in Component, it makes sense to do this but label should be something like stringContent
-		//       Some components, specifically input/label call their stringContent 'label'
+		// TODO: consider treating text content as any other content which gets appended to 'content' array as thery are encountered
+		//       instead of reducing them to one 'label'
+		// TODO: consider if getLabel/setLabel methods should be moved to a derived "Input extends Component" class.
+		// TODO: consider renaming label to something like 'stringContent'
 		if (this.el && this.componentParams.optParams.label) {
 			this.label = this.componentParams.optParams.label;
 			if (/^@HTML/.test(this.label) || reHTMLContent.test(this.label))
@@ -259,8 +284,8 @@ export class Component {
 	// Form1.  You can pass 'unnamed' as the first paramter avoid ambiguity and still result in an unnamed child.
 	//    Form1: <obj>.mount(<name>, <childContent> [,<insertBefore>])
 	//    Form2: <obj>.mount(<childContent> [,<insertBefore>])
-	mount(p1, p2, p3) {
-		return ComponentMount([this, this.el, this], p1, p2, p3)
+	mount(...p) {
+		return ComponentMount([this, this.el, this], ...p);
 	}
 
 	// remove a child from this Component.
@@ -315,6 +340,33 @@ export class Component {
 			this.disposables.add(atom.tooltips.add(this.el, {title: text, keyBindingCommand: cmdForKeyBinding}));
 		else
 			this.disposables.add(atom.tooltips.add(this.el, {title: text}));
+	}
+
+	// usage: setClass(theClass, enabled=true)
+	// add a single class to the component. If enable is false, it removes the class instead. This is a convenient way to add or
+	// remove a class based on a bolean value.
+	setClass(theClass, enabled=true)
+	{
+		if (enabled)
+			this.el.classList.add(theClass);
+		else
+			this.el.classList.remove(theClass);
+		return enabled;
+	}
+
+	addClasses(...classes) {
+		classes = classes.flat();
+		var classArray=[];
+		for (var cls of classes) {
+			if (cls) {
+				if (typeof cls != 'string')
+					throw new BGError("DOM classes must be a string item is '"+(typeof cls)+"'", {classes, cls});
+				classArray = classArray.concat(cls.split(/[:,\s]+/));
+			}
+		}
+		classArray = classArray.filter(cls=>(!!cls));
+		if (classArray.length>0)
+			this.el.classList.add(...classArray)
 	}
 }
 

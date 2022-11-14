@@ -1,8 +1,18 @@
 
 export class BGError extends Error {
+	static logErrorToConsole(e, placeDescription)
+	{
+		if (e instanceof BGError)
+			console.error("Exception caught in "+placeDescription+"\n%s", e.txtMsg, ...e.p);
+		else
+			console.error("Exception caught in "+placeDescription+"\n%s", ""+e, e);
+	}
+
+
 	constructor(txtMsg, ...p)
 	{
 		super(txtMsg);
+		this.txtMsg = txtMsg;
 		this.p = p;
 		console.error("BGError: "+txtMsg, ...p)
 	}
@@ -15,7 +25,7 @@ export class BGError extends Error {
 //                        node-v12.14.1/deps/v8/src/inspector/injected-script.cc
 //                           218,23:             .setText("Uncaught (in promise)" + message)
 process.on('unhandledRejection', (error, promise)=>{
-	console.console.log("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!! HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!");
+	console.console.log("######################################## HERE ####################################");
 	if (error instanceof BGError) {
 		console.error("Uncaught (in promise) Error: "+error.txtMsg, ...error.p, promise)
 	} else {
