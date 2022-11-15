@@ -1,5 +1,5 @@
 import {
-	ComponentParams, ComponentMount, ComponentUnmount,
+	ComponentMount, ComponentUnmount,
 	ComponentReplaceChildren, bgComponent, reHTMLContent, ComponentGetMountedName,
 	lifeCycleChecker,
 	ComponentReplaceChild,
@@ -14,11 +14,14 @@ import {
 	ComponentInsertBefore,
 	ComponentRemoveChild,
 	ComponentConstruct,
-	ComponentGetName
-}                                from './componentUtils'
-import { Disposables }           from './Disposables'
-import { RegisterGlobalService } from './GlobalServices'
-import { BGError }               from './BGError'
+	ComponentGetName,
+	ComponentMakeDOMNode,
+	ComponentDestroyDOMNode
+}                                from './componentCore';
+import { ComponentParams }       from './ComponentParams';
+import { Disposables }           from './Disposables';
+import { RegisterGlobalService } from './GlobalServices';
+import { BGError }               from './BGError';
 
 // LifeTest tracks all Component instances and records when significant state tranisitions ocur. When this is enabled, none of them
 // will be garbage collected b/c the tracking mechanism keeps strong references to each component.
@@ -36,10 +39,10 @@ export const GCTest  =true && (global.FinalizationRegistry);
 // with interactive components explicitly.
 //
 // Towards this goal there is a notion that for identification purposes a DOM node and a non-DOM object that represents and extends
-// it are the same. The componentUtils library provides efficient bidirectional navigation between them. This Component class provides
-// one possibility of non-DOM object that extends a DOM object but the the meat of this class's implementation is in the componentUtils.js
+// it are the same. The componentCore library provides efficient bidirectional navigation between them. This Component class provides
+// one possibility of non-DOM object that extends a DOM object but the the meat of this class's implementation is in the componentCore.js
 // library. The Button Hierachy is another example that is not related to this class but can be used very similarly becasue it also
-// deferes much of its implementation to componentUtils.js. Both DOM nodes and non-DOM objects that use componentUtils.js to extend DOM
+// deferes much of its implementation to componentCore.js. Both DOM nodes and non-DOM objects that use componentCore.js to extend DOM
 // nodes can be passed arround interchangably. The library functions that operate on these objects take advantage of efficient
 // navigation between the objects that represent the same node.
 //
@@ -149,11 +152,11 @@ export class Component
 		if (componentParams.Constructor && componentParams.Constructor  != new.target)
 			return new componentParams.Constructor(componentParams);
 
-		// b/c we pass in 'this' to makeHtmlNode it will initialize this with all the properties expected of a bgComponent. We do
+		// b/c we pass in 'this' to ComponentMakeDOMNode it will initialize this with all the properties expected of a bgComponent. We do
 		// this before setting any other this.props so that the memory layout of all bgComponent will share a common layout up to
 		// that point. This is not functional in the code but may aid in some transparent runtime optimizations.
 		// properties set: name, mounted, mountedUnamed, el, bgComponent
-		componentParams.makeHtmlNode(this)
+		ComponentMakeDOMNode(componentParams, this)
 
 		this.disposables = new Disposables();
 		this.componentParams = componentParams;
@@ -185,7 +188,7 @@ export class Component
 	destroy() {
 		this.disposables.dispose();
 		deps.objectDestroyed(this);
-		this.componentParams.destroyHtmlNode([this, this.el, this]);
+		ComponentDestroyDOMNode([this, this.el, this]);
 	}
 
 
@@ -310,7 +313,9 @@ export class Component
 	onMount() {}
 	onPreUnmount() {}
 	onUnmount() {}
+	onPreConnected() {}
 	onConnected() {}
+	onPreDisconnected() {}
 	onDisconnected() {}
 
 	getLabel() {return this.label || ''}
@@ -397,13 +402,6 @@ if (GCTest) {
 	Component.instFinalChecker = new FinalizationRegistry((heldValue) => {
 		Component.unCollectedCount--;
 	})
-}
-
-// used to wrap a plain DOM node that was not created as a Component from the beginning
-export class OnDemmandComponent extends Component {
-	constructor(el) {
-		super(ComponentParams.wrapNode, el);
-	}
 }
 
 

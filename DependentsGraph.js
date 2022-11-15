@@ -414,7 +414,7 @@ export class DependentsGraph {
 		this.getCNode(obj1, channel).contextCount++;
 	}
 
-	// compliment to changeStart. If this is the topmost pair for obj, it will result in fire(obj) being called to propagate changes.
+	// complement to changeStart. If this is the topmost pair for obj, it will result in fire(obj) being called to propagate changes.
 	// if extra parameters, p, are provided, they will be used in the call to fire(obj, p) but if not, the parameters provided by
 	// the last nested call to changeEnd(obj,...p) or fire(obj,...p) that provided parameters will be used.
 	// TODO: consider if params should be merged or composited using some yet to be determined algorithm if more than one nested

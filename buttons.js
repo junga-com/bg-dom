@@ -1,6 +1,11 @@
-import { Component } from './component'   // for RadioButtonGroup
-import { ComponentParams, reHTMLContent } from './componentUtils'
-import { Disposables } from './Disposables'
+import { Component }         from './component'   // for RadioButtonGroup
+import { ComponentParams }   from './ComponentParams'
+import {
+	reHTMLContent,
+	ComponentMakeDOMNode,
+	ComponentDestroyDOMNode
+}                            from './componentCore'
+import { Disposables }       from './Disposables'
 
 
 // Button is a BGComponent to represent html/dom buttons. It does not derive from Component but its equivalent to it. Button is
@@ -39,11 +44,11 @@ export class Button {
 		if (componentParams.optParams.icon)
 			componentParams.className += " icon "+componentParams.optParams.icon;
 
-		// b/c we pass in 'this' to makeHtmlNode it will initialize this with all the properties expected of a bgComponent. We do
+		// b/c we pass in 'this' to ComponentMakeDOMNode it will initialize this with all the properties expected of a bgComponent. We do
 		// this before setting any other this.props so that the memory layout of all bgComponent will share a common layout up to
 		// that point. This is not functional in the code but may aid in some transparent runtime optimizations.
 		// properties set: name, mounted, mountedUnamed, el, bgComponent
-		componentParams.makeHtmlNode(this);
+		ComponentMakeDOMNode(componentParams, this);
 
 		this.disposables = new Disposables();
 		this.componentParams = componentParams;
@@ -64,7 +69,7 @@ export class Button {
 	destroy() {
 		this.disposables.dispose();
 		deps.objectDestroyed(this);
-		this.componentParams.destroyHtmlNode(this);
+		ComponentDestroyDOMNode(this);
 	}
 
 	rawOnClick(e) {

@@ -1,6 +1,11 @@
 import { Component, GCTest } from './component'   // for RadioButtonGroup
-import { ComponentParams, reHTMLContent } from './componentUtils'
-import { Disposables } from './Disposables'
+import { ComponentParams }   from './ComponentParams';
+import {
+	reHTMLContent,
+	ComponentMakeDOMNode,
+	ComponentDestroyDOMNode
+}                            from './componentCore';
+import { Disposables }       from './Disposables';
 
 
 // InputField is based on the construct of assocating an input tag with its label tag by making the input contained within the label
@@ -35,7 +40,7 @@ export class InputField {
 		if (componentParams.Constructor && componentParams.Constructor  != new.target)
 			return new componentParams.Constructor(componentParams);
 
-		componentParams.makeHtmlNode(this)
+		ComponentMakeDOMNode(componentParams, this)
 
 		this.disposables = new Disposables();
 		this.componentParams = componentParams;
@@ -133,7 +138,7 @@ export class InputField {
 	destroy() {
 		this.disposables.dispose();
 		deps.objectDestroyed(this);
-		this.componentParams.destroyHtmlNode(this);
+		ComponentDestroyDOMNode(this);
 	}
 
 
@@ -173,8 +178,11 @@ export class InputField {
 		return (this.inputCntr && this.inputCntr.el) ? this.inputCntr.el.value : null;
 	}
 	set value(v) {
-		if (this.inputCntr && this.inputCntr.el)
-			this.inputCntr.el.value = v
+		if (this.inputCntr && this.inputCntr.el) {
+			// the value attribute of <input> are only sync'd by the DOM from the attribute to the java object, not the other way
+			// around like most standard attributes
+			this.inputCntr.el.setAttribute('value', v);
+		}
 	}
 }
 
