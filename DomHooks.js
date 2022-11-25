@@ -7,13 +7,15 @@ import {
 }  from './componentCore';
 
 
-// The purpose of this class is to generate onconnected and onDisconnected events for bgComponents when they are mounted/unmounted
-// to/from the document.documentElement tree.
+// The purpose of this class is to generate onConnected family of events for bgComponents when they are connected/disconnected
+// to/from the document.documentElement tree. The DOM provides the isConnected attribute but not an event when it changes
 //
 // Implementation:
 // This implementation patches the Node and Element prototypes to efficiently fire the onConnected and onDisconnected events
 // I tried several other implementations that use the MutationObserver and none completely worked. This implementation has no
 // known problems except that it is a little intrusive. For each of 4 Node methods and 7 Element methods
+// TODO: from stepping through atom code it seems that connected events are fired for custom elements so maybe we could use that instead
+//
 const sConnectWatchTag  = Symbol.for('DOMTreeConnectWatcher');
 const s_appendChild     = Symbol.for('bg_method_appendChild');
 const s_insertBefore    = Symbol.for('bg_method_insertBefore');
@@ -68,12 +70,25 @@ class DOMTreeConnectWatcher_nodePrototypePatchMethod {
 	install(  obj, sName,name) {obj[sName] = obj[name];  obj[name] = this[name];}
 	uninstall(obj, sName,name) {obj[name] = obj[sName];}
 
+	// TODO: what to do about disconnection from above. Often, the element that is added to the connected DOM is also the one that could be removed from it at a later time.
+	//       but what it a higher node gets disconnected? Like we are a pane that gets added/removed from a paneContainer but then the paneContainer could be removed.
+	//       I am still trying to avoid setting sConnectWatchTag all the way up to root but maybe that will have to happen
+
 	// Node.prototype Methods
 	// 'this' is the parent in these methods
 
 	appendChild(child,...p) {
-		if (!child[sConnectWatchTag] || !this.isConnected) return this[s_appendChild](child,...p);
-		const isConnecting = (!child.isConnected );
+		if (!(sConnectWatchTag in child)) return this[s_appendChild](child,...p);
+		const isConnecting = (!child.isConnected && this.isConnected);
+
+		if (!this.isConnected) {
+			// we must be in a disconnected tree so walk up to its root and set sConnectWatchTag so that when it does get connected
+			// we will know to fire events for it
+			let disconnectedRoot = this; while (disconnectedRoot.parentElement) disconnectedRoot=disconnectedRoot.parentElement;
+			if (!(sConnectWatchTag in disconnectedRoot)) {
+				disconnectedRoot[sConnectWatchTag] = true;
+			}
+		}
 
 		isConnecting && FireDOMTreeEvent(child, bgePreConnected);
 		const result = this[s_appendChild](child,...p);
@@ -82,8 +97,17 @@ class DOMTreeConnectWatcher_nodePrototypePatchMethod {
 		return result;
 	}
 	insertBefore(child, ref,...p) {
-		if (!child[sConnectWatchTag] || !this.isConnected) return this[s_insertBefore](child, ref,...p);
-		const isConnecting = (!child.isConnected );
+		if (!(sConnectWatchTag in child)) return this[s_insertBefore](child, ref,...p);
+		const isConnecting = (!child.isConnected && this.isConnected);
+
+		if (!this.isConnected) {
+			// we must be in a disconnected tree so walk up to its root and set sConnectWatchTag so that when it does get connected
+			// we will know to fire events for it
+			let disconnectedRoot = this; while (disconnectedRoot.parentElement) disconnectedRoot=disconnectedRoot.parentElement;
+			if (!(sConnectWatchTag in disconnectedRoot)) {
+				disconnectedRoot[sConnectWatchTag] = true;
+			}
+		}
 
 		isConnecting && FireDOMTreeEvent(child, bgePreConnected);
 		const result = this[s_insertBefore](child, ref,...p);
@@ -92,7 +116,10 @@ class DOMTreeConnectWatcher_nodePrototypePatchMethod {
 		return result;
 	}
 	removeChild(child,...p) {
-		if (!child[sConnectWatchTag] || !this.isConnected) return this[s_removeChild](child,...p);
+		// TODO: consider if we should not check for (sConnectWatchTag in child) because we dont know when some arbitrary point above us will be disconnected
+		if (!this.isConnected || !(sConnectWatchTag in child)) return this[s_removeChild](child,...p);
+
+		const fireDisconnecting = (child.isConnected && this.isConnected);
 
 		FireDOMTreeEvent(child, bgePreDisconnected);
 		const result = this[s_removeChild](child,...p);
@@ -101,18 +128,27 @@ class DOMTreeConnectWatcher_nodePrototypePatchMethod {
 		return result;
 	}
 	replaceChild(newChild,oldChild,...p) {
-		if ((!oldChild[sConnectWatchTag] && !newChild[sConnectWatchTag]) || !this.isConnected) return this[s_replaceChild](newChild,oldChild,...p);
+		if ( !(sConnectWatchTag in oldChild) && !(sConnectWatchTag in newChild) ) return this[s_replaceChild](newChild,oldChild,...p);
 
-		const isDisconnecting = (oldChild[sConnectWatchTag]);
-		const isConnecting    = (newChild[sConnectWatchTag] && !newChild.isConnected );
+		const fireDisconnecting = ( (sConnectWatchTag in oldChild) && oldChild.isConnected);
+		const fireConnecting    = ( (sConnectWatchTag in newChild) && !newChild.isConnected );
 
-		isDisconnecting && FireDOMTreeEvent(oldChild, bgePreDisconnected);
-		isConnecting    && FireDOMTreeEvent(newChild, bgePreConnected);
+		if ( !this.isConnected && !(fireConnecting) ) {
+			// we must be in a disconnected tree so walk up to its root and set sConnectWatchTag so that when it does get connected
+			// we will know to fire events for it
+			let disconnectedRoot = this; while (disconnectedRoot.parentElement) disconnectedRoot=disconnectedRoot.parentElement;
+			if (!(sConnectWatchTag in disconnectedRoot)) {
+				disconnectedRoot[sConnectWatchTag] = true;
+			}
+		}
+
+		fireDisconnecting && FireDOMTreeEvent(oldChild, bgePreDisconnected);
+		fireConnecting    && FireDOMTreeEvent(newChild, bgePreConnected);
 
 		const result = this[s_replaceChild](newChild,oldChild,...p);
 
-		isDisconnecting && FireDOMTreeEvent(oldChild, bgeDisconnected);
-		isConnecting    && FireDOMTreeEvent(newChild, bgeConnected);
+		fireDisconnecting && FireDOMTreeEvent(oldChild, bgeDisconnected);
+		fireConnecting    && FireDOMTreeEvent(newChild, bgeConnected);
 		return result;
 	}
 
@@ -120,11 +156,18 @@ class DOMTreeConnectWatcher_nodePrototypePatchMethod {
 	// 'this' is the parent in these methods
 
 	append(...children) {
-		if (!this.isConnected) return this[s_append](...children);
-
 		const connectingChildren = [];
-		for (const child of children) if (child[sConnectWatchTag] && !child.isConnected)
+		for (const child of children) if ((sConnectWatchTag in child) && !child.isConnected)
 			connectingChildren.push(child);
+
+		if ( !this.isConnected && (connectingChildren.length>0) ) {
+			// we must be in a disconnected tree so walk up to its root and set sConnectWatchTag so that when it does get connected
+			// we will know to fire events for it
+			let disconnectedRoot = this; while (disconnectedRoot.parentElement) disconnectedRoot=disconnectedRoot.parentElement;
+			if (!(sConnectWatchTag in disconnectedRoot)) {
+				disconnectedRoot[sConnectWatchTag] = true;
+			}
+		}
 
 		for (const child of connectingChildren)
 			FireDOMTreeEvent(child, bgePreConnected);
@@ -136,11 +179,18 @@ class DOMTreeConnectWatcher_nodePrototypePatchMethod {
 		return result;
 	}
 	prepend(...children) {
-		if (!this.isConnected) return this[s_prepend](...children);
-
 		const connectingChildren = [];
-		for (const child of children) if (child[sConnectWatchTag] && !child.isConnected)
+		for (const child of children) if ((sConnectWatchTag in child) && !child.isConnected)
 			connectingChildren.push(child);
+
+		if ( !this.isConnected && (connectingChildren.length>0) ) {
+			// we must be in a disconnected tree so walk up to its root and set sConnectWatchTag so that when it does get connected
+			// we will know to fire events for it
+			let disconnectedRoot = this; while (disconnectedRoot.parentElement) disconnectedRoot=disconnectedRoot.parentElement;
+			if (!(sConnectWatchTag in disconnectedRoot)) {
+				disconnectedRoot[sConnectWatchTag] = true;
+			}
+		}
 
 		for (const child of connectingChildren)
 			FireDOMTreeEvent(child, bgePreConnected);
@@ -152,14 +202,21 @@ class DOMTreeConnectWatcher_nodePrototypePatchMethod {
 		return result;
 	}
 	replaceChildren(...children) {
-		if (!this.isConnected) return this[s_replaceChildren](...p);
-
 		const connectingChildren = [];
-		for (const child of children) if (child[sConnectWatchTag] && !child.isConnected)
+		for (const child of children) if ((sConnectWatchTag in child) && !child.isConnected)
 			connectingChildren.push(child);
 		const disconnectingChildren = [];
-		for (const child of this.children) if (child[sConnectWatchTag] && child.isConnected)
+		for (const child of this.children) if ((sConnectWatchTag in child) && child.isConnected)
 			disconnectingChildren.push(child);
+
+		if ( !this.isConnected && (connectingChildren.length>0) ) {
+			// we must be in a disconnected tree so walk up to its root and set sConnectWatchTag so that when it does get connected
+			// we will know to fire events for it
+			let disconnectedRoot = this; while (disconnectedRoot.parentElement) disconnectedRoot=disconnectedRoot.parentElement;
+			if (!(sConnectWatchTag in disconnectedRoot)) {
+				disconnectedRoot[sConnectWatchTag] = true;
+			}
+		}
 
 		for (const child of disconnectingChildren)
 			FireDOMTreeEvent(child, bgePreDisconnected);
@@ -179,18 +236,28 @@ class DOMTreeConnectWatcher_nodePrototypePatchMethod {
 	// 'this' is the child in these methods
 
 	remove(...p) {
-		if (!this[sConnectWatchTag] || !this.isConnected) return this[s_remove](...p);
+		if ( !this.isConnected || !(sConnectWatchTag in this) ) return this[s_remove](...p);
+
 		FireDOMTreeEvent(this, bgePreDisconnected);
+
 		const result = this[s_remove](...p);
+
 		FireDOMTreeEvent(this, bgeDisconnected);
 		return result;
 	}
 	replaceWith(...children) {
-		if (!this.isConnected) return this[s_replaceWith](...children);
-
 		const connectingChildren = [];
-		for (const child of children) if (child[sConnectWatchTag] && !child.isConnected)
+		for (const child of children) if ((sConnectWatchTag in child) && !child.isConnected)
 			connectingChildren.push(child);
+
+		if ( !this.isConnected && (connectingChildren.length>0) ) {
+			// we must be in a disconnected tree so walk up to its root and set sConnectWatchTag so that when it does get connected
+			// we will know to fire events for it
+			let disconnectedRoot = this; while (disconnectedRoot.parentElement) disconnectedRoot=disconnectedRoot.parentElement;
+			if (!(sConnectWatchTag in disconnectedRoot)) {
+				disconnectedRoot[sConnectWatchTag] = true;
+			}
+		}
 
 		FireDOMTreeEvent(this, bgePreDisconnected);
 		for (const child of connectingChildren)
@@ -204,11 +271,18 @@ class DOMTreeConnectWatcher_nodePrototypePatchMethod {
 		return result;
 	}
 	after(...children) {
-		if (!this.isConnected) return this[s_after](...children);
-
 		const connectingChildren = [];
-		for (const child of children) if (child[sConnectWatchTag] && !child.isConnected)
+		for (const child of children) if ((sConnectWatchTag in child) && !child.isConnected)
 			connectingChildren.push(child);
+
+		if ( !this.isConnected && (connectingChildren.length>0) ) {
+			// we must be in a disconnected tree so walk up to its root and set sConnectWatchTag so that when it does get connected
+			// we will know to fire events for it
+			let disconnectedRoot = this; while (disconnectedRoot.parentElement) disconnectedRoot=disconnectedRoot.parentElement;
+			if (!(sConnectWatchTag in disconnectedRoot)) {
+				disconnectedRoot[sConnectWatchTag] = true;
+			}
+		}
 
 		for (const child of connectingChildren)
 			FireDOMTreeEvent(child, bgePreConnected);
@@ -220,11 +294,18 @@ class DOMTreeConnectWatcher_nodePrototypePatchMethod {
 		return result;
 	}
 	before(...children) {
-		if (!this.isConnected) return this[s_before](...children);
-
 		const connectingChildren = [];
-		for (const child of children) if (child[sConnectWatchTag] && !child.isConnected)
+		for (const child of children) if ((sConnectWatchTag in child) && !child.isConnected)
 			connectingChildren.push(child);
+
+		if ( !this.isConnected && (connectingChildren.length>0) ) {
+			// we must be in a disconnected tree so walk up to its root and set sConnectWatchTag so that when it does get connected
+			// we will know to fire events for it
+			let disconnectedRoot = this; while (disconnectedRoot.parentElement) disconnectedRoot=disconnectedRoot.parentElement;
+			if (!(sConnectWatchTag in disconnectedRoot)) {
+				disconnectedRoot[sConnectWatchTag] = true;
+			}
+		}
 
 		for (const child of connectingChildren)
 			FireDOMTreeEvent(child, bgePreConnected);

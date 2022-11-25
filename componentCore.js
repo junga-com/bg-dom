@@ -135,7 +135,7 @@ export function ComponentToEl(bgComp)
 	throw new BGError("bgComp could not be identified as anything that leads to a DOMNode", {bgComp});
 }
 
-// usage: BGNode ComponentToBG(<bgcomp>, <forceFlag>)
+// usage: BGNode ComponentToBG(<bgComp>, <forceFlag>)
 // return the BGNode object associated with <el> (the DOMNode). If there is no BGNode object for this DOMNode, the <forceFlag>
 // determines what to return.
 //
@@ -148,51 +148,51 @@ export function ComponentToEl(bgComp)
 // object but WeakRef is not yet available in Atom's nodejs version.
 //
 // Params:
-//    <bgcomp>    : typically a DOMNode but could also be a BGNode. If its not either of these it will throw an exeception regardless
+//    <bgComp>    : typically a DOMNode but could also be a BGNode. If its not either of these it will throw an exeception regardless
 //                  of the value of <forceFlag>
 //    <forceFlag> : indicate what to return if there is no BGNode for a DOMNode passed in
 //                  (default)  : throw exception
 //                  'null'     : return null
-//                  'force'    : return <bgcomp> even though its a DOMNode and not a BGNode
-//                  'climb'    : climb up the parent chain of bgcomp to find a BGNode
-export function ComponentToBG(bgcomp, forceFlag) {
+//                  'force'    : return <bgComp> even though its a DOMNode and not a BGNode
+//                  'climb'    : climb up the parent chain of bgComp to find a BGNode
+export function ComponentToBG(bgComp, forceFlag) {
 	// we cant do nothin with nothin
-	if (!bgcomp)
-		throw new BGError("the bgcomp passed in is null or undefined", {bgcomp});
+	if (!bgComp)
+		throw new BGError("the bgComp passed in is null or undefined", {bgComp});
 
 	// its already a BGNode
-	if (('el' in bgcomp) && ('nodeType' in bgcomp.el))
-		return bgcomp;
+	if (('el' in bgComp) && ('nodeType' in bgComp.el))
+		return bgComp;
 
 	// this is the typical, direct link
-	var ret=ComponentMap.get(bgcomp);
+	var ret=ComponentMap.get(bgComp);
 	if (ret)
 		return ret;
 
 	// as long as bcomp is a DOMNode, its ok that we did not find a BGNode
-	if (!(nodeType in bgcomp))
-		throw new BGError("the bgcomp passed in is neither a BGNode nor DOMNode", {bgcomp});
+	if (!('nodeType' in bgComp))
+		throw new BGError("the bgComp passed in is neither a BGNode nor DOMNode", {bgComp});
 
 	// now, what do do if there is no direct link
 	switch (forceFlag) {
 		case 'climb':
-			if (!('parentElement' in bgcomp))
-				throw Error("bgcomp is not a DOM Node because it has no parentElement member");
+			if (!('parentElement' in bgComp))
+				throw Error("bgComp is not a DOM Node because it has no parentElement member");
 
 			console.assert(false, "please confirm that the 'climb' option to ComponentToBG is working and then remove this assert and the error msg below it");
-			var p=bgcomp;
+			var p=bgComp;
 			while ((p=p.parentElement) && !(ret=ComponentMap.get(p)));
-			console.warn("check this. ComponentToBG()", {passedIn:bgcomp, foundViaClimb:ret});
+			console.warn("check this. ComponentToBG()", {passedIn:bgComp, foundViaClimb:ret});
 			return ret;
 
 		case 'force':
-			return bgcomp;
+			return bgComp;
 
 		case 'null':
 			return null;
 
 		default:
-			throw new BGError("the bgcomp does not have a corresponding BGNode object", {bgcomp});
+			throw new BGError("the bgComp does not have a corresponding BGNode object", {bgComp});
 	}
 }
 export const ComponentMap = new WeakMap();
@@ -201,15 +201,16 @@ export const ComponentMap = new WeakMap();
 // usage: <BGComp> ComponentGetParent(bgComp)
 // returns the best bgComp parent of bgComp
 // it tries to return a BGNode but will return a DOMNode if it has to.
-// if bgComp is null or it cannot find a parent, it throws an exception
+// if bgComp is null it throws an exception
+// if no parent is found it returns null because unmounted BGComps do not have parents
 export function ComponentGetParent(bgComp) {
-	if (!bgcomp)
-		throw new BGError("the bgcomp passed in is null or undefined", {bgcomp});
+	if (!bgComp)
+		throw new BGError("the bgComp passed in is null or undefined", {bgComp});
 	const [bgObj, bgEl] = ComponentNormalize(bgComp);
 	if (bgObj && (bgComponentParent in bgObj)) return bgObj[bgComponentParent];
 	if (bgObj && bgObj.parent)                 return bgObj.parent;
 	if (bgEl  && bgEl.parentElement)           return ComponentToBG(bgEl.parentElement, "force");
-	throw new BGError("no parent could be found for bgComp", {bgComp});
+	return null;
 }
 
 
@@ -236,7 +237,7 @@ export function ComponentNormalize(bgComp) {
 	if (bgComp && (bgComponent in bgComp))
 		return [bgComp, bgComp.el, bgComp]
 	const el  = ComponentToEl(bgComp);
-	const obj = ComponentToBG(el);
+	const obj = ComponentToBG(el, 'null');
 	return [obj, el, obj||el]
 }
 
@@ -357,10 +358,11 @@ export function ComponentMount($parent, p1, p2, p3, trace) {
 	// if p3 is specified the user must have called with 3 params so it must be form 1
 	// The only other form 1 cases is when p2 is specified and p1 is a valid name
 	// When p1 is content that happens to also be a valid name and insertBefore is specified, it will be incorrectly classified.
+	const p1Specified = (!!p1);
 	const p2Specified = (typeof p2 != 'undefined');
 	const p3Specified = (typeof p3 != 'undefined');
 	const p1CanBeAName= (typeof p1 == 'string' && reVarName.test(p1));
-	if ((p3Specified) || (p2Specified && p1CanBeAName)) {
+	if ((!p1Specified) || (p3Specified) || (p2Specified && p1CanBeAName)) {
 		name         = p1; if (name == "unnamed") name='';
 		childContent = p2
 		insertBefore = p3
@@ -397,30 +399,42 @@ export function ComponentMount($parent, p1, p2, p3, trace) {
 				element = document.createTextNode(childContent.replace(/^@TEXT/,""));
 
 			childContent = element;
-			break;
+		break;
 
-		case 'object':
+		case 'object': if (Array.isArray(childContent)) {
 			// iterate an array of children and recursively add them
-			if (Array.isArray(childContent)) {
-				for (var i =0; i<childContent.length; i++) {
-					var aryElement = childContent[i]
+			for (var i =0; i<childContent.length; i++) {
+				var aryElement = childContent[i]
 
-					// if its an array, since its nested inside the childContent array (this block) treat it as construction
-					// parameters to ComponentConstruct. If the parent has a defaultChildType property it will be added to the
-					// params as the 'defaultConstructor' so that it will be used for the 'Constructor' if the params do not
-					// specify one
-					if (Array.isArray(aryElement)) {
-						aryElement = ComponentConstruct(
-							(parent.defaultChildType) ? {defaultConstructor:parent.defaultChildType} : null,
-							...aryElement);
-					}
-					// call ComponentMount explicitly with all the params to avoid any ambiguity -- if insertBefore is undefined, pass null
-					var mountedChild = ComponentMount([parentObj, parentEl, parent], (!name || name.endsWith("[]"))?name:name+"[]", aryElement, insertBefore || null, trace);
+				// if its an array, since its nested inside the childContent array (this block) treat it as construction
+				// parameters to ComponentConstruct. If the parent has a defaultChildConstructor property it will be added to the
+				// params as the 'defaultConstructor' so that it will be used for the 'Constructor' if the params do not
+				// specify one. Note that the defaultChildConstructor may have already been added to this construction array by
+				// the ComponentParams class but it is ok to add it twice because 1) they are probably the same value (because
+				// the parent often sets it defaultChildConstructor from params.defaultChildConstructor) so it will just override
+				// the existing value with the same value, and 2) if they are not the same, we it will prefer the more dynamic one
+				// in the parent.
+				if (Array.isArray(aryElement)) {
+					aryElement = ComponentConstruct(
+									(parent.defaultChildConstructor) ? {defaultConstructor:parent.defaultChildConstructor} : null,
+									...aryElement
+								);
 				}
-				return childContent;
+
+				var aryElementType = typeof aryElement;
+				var childName = ((aryElementType == 'object') && bgComponentName in aryElement)
+					? aryElement[bgComponentName]
+					: ((aryElementType == 'object') && name in aryElement)
+						? aryElement[name]
+						: (!name || name.endsWith("[]"))
+							?name
+							:name+"[]";
+
+				// call ComponentMount explicitly with all the params to avoid any ambiguity -- if insertBefore is undefined, pass null
+				var mountedChild = ComponentMount([parentObj, parentEl, parent], childName, aryElement, insertBefore || null, trace);
 			}
-			//else any other object does not need special treatment and drops though to the rest of the method
-			break;
+			return childContent;
+		} break; // the combined case
 
 		default:
 			console.assert(false, "Invalid arguments. ChildContent needs to be an object, array or string", {childContent:childContent,p1:p1,p2:p2,p3:p3, type:typeof childContent});
@@ -842,6 +856,16 @@ export function ComponentDestroyChildren($parent) {
 // usage: <BGNode> ComponentConstruct(...p)
 // This supports constructing a specific class of BGNode given an array of contruction params. This is typically done when adding
 // child content to either constructing a Component class or calling ComponentMount (or something that calls ComponentMount).
+// The type of BGNode returned is determined by the constructor obtained from the parameters themselves or the global.bg.Component
+// constructor as a default.
+// Override or Provide a Deafult The Constructor in the Params:
+// The caller of this function can prepend an argument to the list that will override same named parameters in the list passed in.
+//      ComponentConstruct({Constructor:Html}, ...p)         // this will ensure that the Html constructor function is used
+//      ComponentConstruct({defaultConstructor:Html}, ...p)  // this will use the Html constructor function only if Constructor is
+//                                                           // not specified in the remaining parameters
+//      ComponentConstruct({defaultChildConstructor:ListItem}, ...p)  // this will not affect the constructor that this invocation
+//                                                           // uses, but if the params specify any children by constrction params,
+//                                                           // ListItem will become the defaultConstructor for them.
 // Example:
 //    this.mount([
 //       myChild,                // <myChild> is an existing BGComp
@@ -850,9 +874,12 @@ export function ComponentDestroyChildren($parent) {
 //       [{Constructor:<classVariable>}, ...] // where <classVariable> is a variable that conatins a constructor
 //    ])
 // Params:
-//    <p> : is an arbitrarily long list of parameters as described in 'man ComponentParams'. In that list somwhere the the
-//          'Constructor' property can be specified. If not, 'defaultConstructor' will be used if its in the list. If that is not
-//          present, 'global.bg.Component' is used. If that is not set an exception is thrown.
+//    <p> : is an arbitrarily long list of parameters as described in 'man ComponentParams'. This function determines how to construct
+//          the BGComp from the parameter themselves.
+//              * if and parameter name 'Constructor' is present it will be invoked to create the BGComp.
+//              * otherwise, if 'defaultConstructor' is present it will be used.
+//              * otherwise if global.bg.Component exists, it will be used.
+//              * otherwise and exception is thrown.
 export function ComponentConstruct(...p) {
 	//TODO: support dynamic construction of a specific Component type, based on the $<type> string field, maybe use customElements.define (CustomElementRegistry)
 	const componentParams = new ComponentParams(...p);
@@ -979,6 +1006,7 @@ export const bgeDisconnected    = 'onDisconnected';
 //                        mechanism fires them and sometimes they both do.
 // TODO: consider if we can remove the events fired by ComponentMount and ComponentUnmount because the latest implementation of
 //       DOMHooks.js might be reliable in all cases.
+// CRITICALTODO: consider marking participating nodes with an attribute or class that we can use querySelectorAll instead of walking the decendants
 export function FireDOMTreeEvent(startNode, methodName, propagationFlag) {
 	if (!startNode) return;
 	const [bgObj, bgEl, bgComp] = ComponentNormalize(startNode);
@@ -994,11 +1022,20 @@ export function FireDOMTreeEvent(startNode, methodName, propagationFlag) {
 
 	lifeCycleChecker && lifeCycleChecker.softMark(bgComp, methodName);
 
-	if (bgComp[bgComponent] && methodName)
-		bgComp.mountedName = ComponentGetMountedName(bgComp, true);
+	// maintain the BGNode.mountedName property
+	if (bgObj) {
+		if (methodName==bgeConnected)
+			bgComp.mountedName = ComponentGetMountedName(bgComp, true);
+		else if (methodName==bgeDisconnected)
+			bgComp.mountedName = '';
+	}
 
+	// invoke the method if it exists
 	(typeof bgComp[methodName] == 'function') && bgComp[methodName]();
 
+	// walk the children.
+	// Note that its tempting to only fire the ones that are have the bgComponent symbol but they might have decentants that are
+	// even if they do not
 	if (bgEl) for (const child of bgEl.children)
 		FireDOMTreeEvent(child, methodName, true);
 }

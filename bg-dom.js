@@ -3,7 +3,7 @@ RegisterPackage(__filename);
 
 export * from './GlobalServices.js'
 export * from './Disposables'
-export * from './bg-promise'
+export * from './BGPromise'
 export * from './parameters'
 export * from './bg_ini'
 export * from './DependentsGraph'

@@ -118,7 +118,7 @@ export const GCTest  =true && (global.FinalizationRegistry);
 //    label:string   : text that will be set as the direct content of the node. If it begins with a tag it will be parsed as html.
 //    content:<multiple> : innerHTML specified in multiple ways -- text, html, DOM node, Component instance, or an array of multiple of those
 //    paramNames:stringSet: (specified by derived classes) space separated list of additional parameter names that this type of component supports.
-//    unnamedCB:function: a function that will be registered in the component's default callback event.
+//    defaultCB:function: a function that will be registered in the component's default callback event.
 //    <Additional Component properties>  :<any> : any name documented by any class in the component hierarchy being created can specified
 //    <Style properties>:string: any style name can be specified. This library maintains a map of known style names. If you find that
 //                   it does not recognize the name you specify as a style, you can force it by moving it into a {styl: ..} sub-object.
@@ -149,6 +149,7 @@ export class Component
 			this.trace = componentParams.trace;
 
 		// this implements dynamic construction where the parameters determine the specific component class to construct
+		// TODO: assert that componentParams.Constructor derives from Component?
 		if (componentParams.Constructor && componentParams.Constructor  != new.target)
 			return new componentParams.Constructor(componentParams);
 
@@ -161,7 +162,7 @@ export class Component
 		this.disposables = new Disposables();
 		this.componentParams = componentParams;
 		this.optParams = this.componentParams.optParams;
-		this.defaultChildType = componentParams.defaultConstructor;
+		this.defaultChildConstructor = componentParams.defaultChildConstructor;
 
 		this.mountedName = ComponentGetMountedName([this, this.el, this], true);
 		if (GCTest) {
@@ -191,6 +192,8 @@ export class Component
 		ComponentDestroyDOMNode([this, this.el, this]);
 	}
 
+
+	getParent() { return ComponentGetParent(this); }
 
 	// These 4 methods are compatible with the same named methods from DOM:Node (older API from Node)
 
@@ -329,7 +332,7 @@ export class Component
 	}
 
 	fireOnChangeCB(...p) {
-		return this.componentParams.getCompositeCB(true)(...p)
+		return this.componentParams.getCompositeCB('defaultCB',true)(...p)
 	}
 
 	getSize() {
@@ -346,6 +349,12 @@ export class Component
 		else
 			this.disposables.add(atom.tooltips.add(this.el, {title: text}));
 	}
+
+	hide() {this.el.style.display = 'none';}
+	show() {this.el.style.display = null;}  // setting to null removes the inline style letting the next cascade value take affect.
+
+	focus() {this.el.focus()}
+	blur()  {this.el.blur()}
 
 	// usage: setClass(theClass, enabled=true)
 	// add a single class to the component. If enable is false, it removes the class instead. This is a convenient way to add or

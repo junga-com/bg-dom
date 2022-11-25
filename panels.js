@@ -47,7 +47,7 @@ export class PanelInset extends Component {
 //     padded  : pad the content of this area
 // Params:
 //    <title>:string        : Content of the header. Must include a leading space because it is actually just a tagIDClasses parameter.
-//                            'Hello'         -> ignored -- interpreted as tagName which is locked by this class. 
+//                            'Hello'         -> ignored -- interpreted as tagName which is locked by this class.
 //                            ' Hello'        -> Text content is 'Hello'
 //                            ' <b>Hello<p>'  -> html interpretted.
 //                            '  <b>Hello<p>' -> html not interpretted -- text content is '<b>Hello<p>'.

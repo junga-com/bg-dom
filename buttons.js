@@ -35,7 +35,7 @@ export class Button {
 			{
 				tagIDClasses: '$button.btn',
 				paramNames  : 'focusOnMouseClick,icon',
-				nameForCB   :'onActivatedCB'
+				defaultCBName   :'onActivatedCB'
 			},
 			tagIDClasses,
 			...p
@@ -55,7 +55,7 @@ export class Button {
 		this.optParams     = componentParams.optParams;
 
 		this.iconName      = componentParams.optParams.icon;
-		this.onActivatedCB = componentParams.getCompositeCB(false, 'onActivatedCB');
+		this.onActivatedCB = componentParams.getCompositeCB();
 
 		this.setLabel(componentParams.optParams.label);
 		this.el.onclick = (e)=>{this.rawOnClick(e)};
@@ -125,9 +125,9 @@ export class Button {
 //    Button : for common behavior to all button hierarchy classes
 export class ToggleButton extends Button {
 	constructor(bgNodeID, ...options) {
-		super({paramNames: 'pressed', nameForCB:'onStateChangeCB'}, bgNodeID, ...options);
+		super({paramNames: 'pressed', defaultCBName:'onStateChangeCB'}, bgNodeID, ...options);
 		this.setPressedState(Boolean(this.optParams["pressed"]));
-		this.onStateChangeCB = this.componentParams.getCompositeCB(false, 'onStateChangeCB');
+		this.onStateChangeCB = this.componentParams.getCompositeCB('onStateChangeCB');
 	}
 	onActivated(e) {
 		this.el.classList.toggle("selected");
@@ -220,7 +220,7 @@ export class CommandButton extends Button {
 //    Button : for common behavior to all button hierarchy classes
 export class OneShotButton extends ToggleButton {
 	constructor(bgNodeID, ...options) {
-		super({nameForCB:'onActivatedCB'}, bgNodeID,  ...options);
+		super({defaultCBName:'onActivatedCB'}, bgNodeID,  ...options);
 	}
 	reset() {
 		this.setPressedState(false);
@@ -242,7 +242,7 @@ export class OneShotButton extends ToggleButton {
 //    <initialValue>  : the child name that will be pressed initially
 // Options:
 //    Options can be specified in a flexible way. See ComponentParams
-//    <unamedCB>      : a callback that gets called whenever the value changes. value is passed to the callback.
+//    <defaultCB>      : a callback that gets called whenever the value changes. value is passed to the callback.
 //    <content>       : the child content should consist typically of two or more components like ToggleButton that support the
 //                         <component>.setPressedState(true|false) method.
 //                         <component>.onStateChangeCB=(state, button)=>{...} property.
@@ -251,7 +251,7 @@ export class OneShotButton extends ToggleButton {
 //    <DOM properties and styles>    : See ComponentParams
 export class RadioButtonGroup extends Component {
 	constructor(tagIDClasses, initialValue, ...options) {
-		super(tagIDClasses, {defaultConstructor:OneShotButton}, '$div.btn-group.mutex', ...options);
+		super(tagIDClasses, {defaultChildConstructor:OneShotButton}, '$div.btn-group.mutex', ...options);
 		this.value = initialValue;
 
 		// since we did not create the child buttons directly, iterate them to set our callback which implements the mutually exclusive nature

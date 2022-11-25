@@ -24,17 +24,17 @@ import { Disposables }       from './Disposables';
 // the field to specify the label with the "<input/>" marker.
 //
 // Events:
-//       onActivatedCB : default: functions passed to the constructor are aggregated together. This is called when the input is committed.
-//                       an input like text input have a notion of the user commiting the input by pressing <enter> or <tab> to leave the control.
-//       onTypingCB    : a parameter with this name passed to the constructor is called as the user is changing the input. For example
-//                       text inputs call this as the user types
+//       onActivatedCB : default: unnamed functions and those named onActivatedCB are aggregated together and called when the input
+//                       is committed. Commiting the input is typically pressing <enter> or <tab> or leaving the control.
+//       onTypingCB    : functions named onTypingCB will be aggregated together and called while the user is typing after a brief
+//                       pause with no typing. For example text inputs call this as the user types
 // Examples:
 //      new Checkbox("chkbox1: Do you ken it? <input>") // label to the left of checkbox
 //      new Checkbox("chkbox1: <input> Do you ken it?") // label to the right of checkbox
 //
 export class InputField {
 	constructor(...p) {
-		const componentParams = new ComponentParams(...p, "$label", {paramNames:"inputCntr inputCntrTag onTypingCB", root:true});
+		const componentParams = new ComponentParams(...p, "$label", {paramNames:"inputCntr inputCntrTag onTypingCB", defaultCBName:onActivatedCB});
 
 		// this implements dynamic construction where the parameters determine the specific component class to construct
 		if (componentParams.Constructor && componentParams.Constructor  != new.target)
@@ -45,9 +45,9 @@ export class InputField {
 		this.disposables = new Disposables();
 		this.componentParams = componentParams;
 		this.optParams = this.componentParams.optParams;
-		this.defaultChildType = componentParams.defaultConstructor;
+		this.defaultChildConstructor = componentParams.defaultChildConstructor;
 
-		this.onActivatedCB = componentParams.getCompositeCB(false, 'onActivatedCB');
+		this.onActivatedCB = componentParams.getCompositeCB('onActivatedCB');
 		this.el.onchange = (e)=>{this.rawOnChange(e)};
 		this.el.oninput  = (e)=>{this.rawOnTyping(e)};
 

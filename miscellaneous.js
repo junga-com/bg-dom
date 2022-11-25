@@ -1,6 +1,30 @@
 import { Component } from './component'
-const {shell} = require("electron");
+const { shell } = require("electron");
+import { BGError } from './BGError';
 import fs from 'fs';
+
+// usage: <App> BGGetPlugin()
+// This gets the controlling Plugin Application that the code is executing under. If the code is not running under a plugin it returns
+// null. (? should it return the Application in this case?)
+// This was inititially added for packages written for the Atom Editor.
+// Plugins:
+// A plugin is an extension that runs inside a larger application.
+global.BGGetPlugin = function()
+{
+	// the idea is that a plugin will be loaded as a module. In Atom which as of this writing is a pre ES6 node environment (which
+	// supports ES6 via esm package) there is always a chain of modules that we can walk up. The emsToCjsBridge.js of each package
+	// adds the property 'atomPackageName' to the module so we can determine if we are running in a pkg and the name of the package.
+	var mod = module;
+	while (mod) {
+		//console.log("%s mod=%s  %O", mod.isAtomPackage, mod.id.replace(/^.*Sandbox/,""), {plugin:mod.plugin, mod});
+		if (mod.atomPackageName)
+			return global.bg.BGAtomPlugin.get(mod.atomPackageName)
+		mod = mod.parent;
+	}
+	// TODO: consider if we should return global.app here (if thats what we end up calling it)
+	return null;
+}
+
 
 export function bgtraceCntr(cmd)
 {
@@ -79,24 +103,68 @@ export function OpenInNewBrowser(url) {
 }
 
 export class TextEditor extends Component {
-	constructor(text, ...options) {
-		super('$atom-text-editor',Object.assign(...options));
-		this.textEditor = this.el.getComponent().props.model;
+	constructor(text, ...p) {
+		super('$atom-text-editor', ...p, {paramNames:"onTypingDone scopeName"});
+		this.textEditor = this.el.getModel();
 
 		this.textEditor.setText(text);
 
-		var grammarJS = atom.grammars.grammarForScopeName('source.js');
-		if (grammarJS)
-			this.textEditor.setGrammar(grammarJS);
+		if (this.optParams.onTypingDone)
+			this.textEditor.onDidStopChanging(this.optParams.onTypingDone);
+
+		if (this.optParams.scopeName) {
+			var grammarJS = atom.grammars.grammarForScopeName(this.optParams.scopeName);
+			if (grammarJS)
+				this.textEditor.setGrammar(grammarJS);
+		}
+
+		// return a proxy to this instance that passes everything not found in this class on to this.textEditor
+		return new Proxy(this, {
+			get(target, propName) {
+				if (propName in target)
+					return target[propName];
+				else if (target.textEditor)
+					return target.textEditor[propName];
+				else if (propName == 'getText')
+					return ()=>{return ''};
+				else
+					return undefined;
+			},
+			set(target, propName, value) {
+				if (propName in target)
+					target[propName] = value;
+				else if (target.textEditor)
+					target.textEditor[propName] = value;
+				else
+					target[propName] = value;
+				return true;
+			}
+		})
 	}
+
+	// TODO: I think we can just add a get(ter) that returns the prop from this.textEditor
+
+	// getText()
+	// {
+	// 	return this.textEditor.getText();
+	// }
 }
 
-export class Dragger extends Component {
-	constructor(dragCB, ...options) {
-		super('$div.dragger', ...options)
-		this.dragCB = dragCB;
+// This essence of this class is the mechanism to capture the mouse/pointer on pointer down and releasing it on pointer up.
+// While its captured the onDrag(event) method and callback gets invoked. The dragger DOM element can be styled to any shape and
+// in the onDrag event you can move the element or not.
+export class Dragger extends Component
+{
+	constructor(...p) {
+		super('$div.dragger', {defaultCBName:'onDragCB'}, ...p)
+		this.dragCB = this.componentParams.getCompositeCB('onDragCB');
 		this.el.onpointerdown = (e)=>this.onDragStart(e);
 	}
+
+	onDrag(event) {}
+
+	// starting the drag will capture the mouse. Typically this is called by onpointerdown registered in our ctor.
+	// this will install callbacks for onpointermove and onpointerup. onpointerup will end the capture by calling our onDragEnd.
 	onDragStart(e) {
 		this.el.setPointerCapture(e.pointerId);
 		this.capturedId = e.pointerId;
@@ -107,7 +175,7 @@ export class Dragger extends Component {
 		this.el.onpointercancel= (e)=>this.onDragEnd(e);
 	}
 	onDragMove(e) {
-		if (e.pointerId = this.capturedId) {
+		if (e.pointerId == this.capturedId) {
 			const pos = {x:0,y:0};
 			({x:pos.x, y:pos.y} = e);
 			var delta = {
@@ -117,10 +185,11 @@ export class Dragger extends Component {
 			}
 			if (this.dragCB)
 				this.dragCB(delta, e, this);
+			this.onDrag(e);
 		}
 	}
 	onDragEnd(e) {
-		if (e.pointerId = this.capturedId) {
+		if (e.pointerId == this.capturedId) {
 			this.el.onpointermove = null;
 			this.el.onpointerup   = null;
 			this.el.onpointercancel= null;
@@ -129,6 +198,123 @@ export class Dragger extends Component {
 		}
 	}
 }
+
+export class GridDragger extends Dragger
+{
+	constructor(...p) {
+		super('$div.dragger', {defaultCBName:'onDragCB'}, ...p)
+		this.dragCB = this.componentParams.getCompositeCB('onDragCB');
+		this.el.onpointerdown = (e)=>this.onDragStart(e);
+	}
+
+	onMounted() {
+		console.log("!!! drag onMounted");
+	}
+
+
+	onConnected()
+	{
+		this.gridContainer = this.parent;
+		var tAreas;
+		while ( this.gridContainer && (tAreas = getComputedStyle(Component.toEl(this.gridContainer)).gridTemplateAreas).length == 0)
+			this.gridContainer = Component.getParent(this.gridContainer);
+		if (!this.gridContainer)
+			throw new BGError("GridDragger could not find a parent that has a grid layout")
+
+		this.gridContainer = Component.toEl(this.gridContainer);
+
+		// this puts each grid row in a separate array row and removes all the quotes
+		// then the loop converts each row to an array of columns
+		tAreas = tAreas.split(/"\s+"/).map( (s)=>s.replace(/"/g,'') );
+		for (const i in tAreas)
+			tAreas[i] = tAreas[i].split(/\s+/);
+
+		this.setOrientation(tAreas);
+	}
+
+	// Params:
+	//    tAreas : a two dimensional array of the gridTemplateArea. Each element is a a row which is an array of columns
+	setOrientation(tAreas)
+	{
+		this.tAreas = tAreas;
+
+		// determine if dragger is a vertical column divider or a horizontal row divider
+		this.isColDivider = null;
+		// if its only one col wide it cant be col diver or if 'dragger' spans multiple columns it must be a row divider
+		if (this.tAreas[0].length==1 || this.tAreas.some( (r)=>r.filter( (c)=>c=='dragger').length>1 ) )
+			this.isColDivider = false;
+
+		// if its only one row high it cant be row diver or if 'dragger' spans multiple rows it must be a col divider
+		else if (this.tAreas.length == 1 || this.tAreas.filter( (r)=>r.filter( (c)=>c=='dragger').length>0 ).length > 1)
+			this.isColDivider = true;
+
+		// now we know there is a single drgger cell. if at least one row has the same value in all columns it looks like a colDivider
+		else if (this.tAreas.some( (row,i)=>{return row.every((rowCell)=>row[0]==rowCell ) } ) ) {
+			this.isColDivider = true;
+		}
+
+		// now check for at least one column that has the same value in each row
+		else if (this.tAreas[0].some( (firstColCell,j)=>{return this.tAreas.every( (row)=>firstColCell==row[j]) } ) ) {
+			this.isColDivider = false;
+		}
+
+		if (this.isColDivider === null)
+			throw new BGError("// TODO: the logic to determine if the dragger is horizontal or vertical can not determine the orientation for this grid template", {
+				templateArea     : this.tAreas,
+				rowDimensions    : getComputedStyle(this.gridContainer).gridTemplateRows,
+				columnDimensions : getComputedStyle(this.gridContainer).gridTemplateColumns,
+			});
+
+		if (this.isColDivider) {
+			this.splitTemplate = this.tAreas.find(r=>r.find(c=>(c=='dragger') ) );
+			var splitNow = getComputedStyle(this.gridContainer).gridTemplateColumns.split(/\s+/);
+		} else {
+			var ttAreas = this.tAreas[0].map((_, i)=>this.tAreas.map( row=>row[i]) )
+			this.splitTemplate = ttAreas.find(r=>r.find(c=>(c=='dragger') ) );
+			var splitNow = getComputedStyle(this.gridContainer).gridTemplateRows.split(/\s+/);
+		}
+
+		this.splitIndx = this.splitTemplate.findIndex(name=>name=='dragger');
+
+		// if we get called before the gridContainer is displayed, splitNow will have the symbolic text like 'min-content' and '1fr'
+		// after its displayed it will have the actual calculated px values. This block finds the closest cell before splitIndx
+		// that either has fr units or px greater than 45
+		this.splitBeforeIndx = this.splitIndx-1;
+		while (this.splitBeforeIndx>=0
+				&& !/fr$/.test(splitNow[this.splitBeforeIndx])
+				&& (!/px$/.test(splitNow[this.splitBeforeIndx]) || parseFloat(splitNow[this.splitBeforeIndx])<45)
+			)
+			this.splitBeforeIndx--;
+		if (this.splitBeforeIndx<0)
+			this.splitBeforeIndx = this.splitIndx-1;
+
+		this.splitAfterIndx = this.splitIndx+1;
+		while (this.splitAfterIndx<splitNow.length
+				&& !/fr$/.test(splitNow[this.splitBeforeIndx])
+				&& (!/px$/.test(splitNow[this.splitBeforeIndx]) || parseFloat(splitNow[this.splitAfterIndx])<45)
+			)
+			this.splitAfterIndx++;
+		if (this.splitAfterIndx>=splitNow.length)
+			this.splitAfterIndx = this.splitIndx+1;
+
+		//console.log("!!! splitTemplate=",{splitNow, splitTemplate:this.splitTemplate,splitIndx:this.splitIndx, splitBeforeIndx:this.splitBeforeIndx, splitAfterIndx:this.splitAfterIndx});
+	}
+
+	onDrag(event)
+	{
+		var cStyles = getComputedStyle(this.parent.el);
+		var splitNow = ((this.isColDivider) ? cStyles.gridTemplateColumns : cStyles.gridTemplateRows).split(/\s+/);
+		var offset   =  (this.isColDivider) ? event.offsetX               : event.offsetY;
+		splitNow[this.splitBeforeIndx] = (parseFloat(splitNow[this.splitBeforeIndx]) + offset) + 'px';
+		splitNow[this.splitAfterIndx]  = (parseFloat(splitNow[this.splitAfterIndx])  - offset) + 'px';
+		if (this.isColDivider)
+			this.gridContainer.style.gridTemplateColumns = splitNow.join(' ');
+		else
+			this.gridContainer.style.gridTemplateRows = splitNow.join(' ');
+		//console.log("!!! splitNow="+splitNow+"    "+(parseFloat(splitNow[this.splitAfterIndx])+parseFloat(splitNow[this.splitBeforeIndx]) ) );
+	}
+}
+
 
 // usage: new BackgroundMessage(<msg> [,"centered"])
 // fills the parent with the msg text in a larger, faded font. Typically used to indicate when there is no data to display in the

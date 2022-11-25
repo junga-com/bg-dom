@@ -1,30 +1,58 @@
-import { Component } from './component'
+import { Component }                     from './component'
 import { Panel, PanelHeader, PanelBody } from './panels'
-import { TextEditor, Dragger } from './miscellaneous'
-import { Disposables } from './Disposables'
+import { TextEditor, GridDragger }       from './miscellaneous'
+import { Disposables }                   from './Disposables'
+import { BGError }                       from './BGError'
+
+function MixInto(SourceClass, targetObj) {
+	console.log({SourceClass, targetObj});
+	Object.assign(targetObj, SourceClass);
+}
+
+var AtomViewMixin = {
+	// View Interface for Atom...
+	getTitle            : function() {return 'bg-dom Examples';},
+	getElement          : function() {return this.el;},
+	getDefaultLocation  : function() {return 'bottom';},
+	getAllowedLocations : function() {return ['left','right','center','bottom'];},
+	getURI              : function() {return this.uri;},
+	isPermanentDockItem : function() {return false},
+	onDidDestroy        : function(callback) {
+		if (!Array.isArray(this.onDidDestroy))
+			this.onDidDestroy = [];
+		this.onDidDestroy.push(callback);
+		return {dispose: ()=>{
+			var indx = this.onDidDestroy.indexOf(callback);
+			if (indx>=0)
+				this.onDidDestroy.splice(indx, 1);
+		}}
+	}
+}
+
+
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// The Initial Sample Data as code text strings
 
 let exampleData = {
 	example1: `
-		 new Panel("example1:.BGExample", [
+		 new Panel(".BGExample", [
 		 	new PanelHeader(" Example 1"),
 		 	"Woo hoo!"
-		 ]);
+		 ])
 	`,
 
 	example2: `
 		 new Panel({
-		 	name: "example1",
 		 	class: "BGExample",
 		 	children: [
-		 		new PanelHeader(" Example 1"),
+		 		new PanelHeader(" Example 2"),
 		 		"Woo hoo!"
 		 	]
-		 });
+		 })
 	`,
 
 	panelWithHeaderAndBody: `
 		 new Panel({
-		 	name: "panelWithHeaderAndBody",
 		 	class: "BGExample",
 		 	children: [
 		 		new PanelHeader("Panel With Header and Body"),
@@ -35,12 +63,11 @@ let exampleData = {
 		 		}),
 
 		 	]
-		 });
+		 })
 	`,
 
 	panelWithHeaderAndText: `
 		 new Panel({
-		 	name: "panelWithHeaderAndText",
 		 	class: "BGExample",
 		 	children: [
 		 		new PanelHeader("Panel With Header and Text"),
@@ -51,132 +78,162 @@ let exampleData = {
 }
 
 
-
-function replaceAll(str,mapObj){
-	var re = new RegExp("\\b"+Object.keys(mapObj).join("\\b|\\b")+"\\b","g");
-	return str.replace(re, function(matched){
-		return mapObj[matched];
-	});
-}
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// class OneDemoAndCodeView
 
 
-
-class OneDemoAndCodeView extends Panel {
-	constructor(name, demo, code, ...p) {
+class OneDemoAndCodeView extends Panel
+{
+	constructor(name, codeText, ...p)
+	{
 		super({
 			name: name,
-			class: "BGOneExample",
-			...p
-		});
+			class: "BGOneExample"
+		}, ...p);
+
 		this.mount([
-			new Panel({name:"title", content: "Example "+name}),
-			new Panel({name:"demo",  children: demo}),
-			new TextEditor(code, {name:"code", tabIndex:1}),
-			new Dragger((...p)=>this.onDrag(...p), {name:"dragger"})
+			new Component({name:"title", content: "Example "+name}),
+			new Panel({name:"demo",  children: eval(codeText)}),
+			new TextEditor(codeText, {
+				name:         "code",
+				scopeName:    'source.js',
+				tabIndex:     1,
+				onTypingDone: ()=>this.onTypingDone()
+			}),
+			new Component("errorMsg:$div"),
+			new GridDragger("dragger:")
 		])
 	}
 
-	onDrag(delta, e) {
-		var colWidthsStr = getComputedStyle(this.el).gridTemplateColumns;
-		if (colWidthsStr) {
-			const [cLeft, cDragger, cRight] = colWidthsStr.split(' ').map((v)=>{return parseInt(v)});
-			var newPercent = (cLeft-cDragger/2+e.offsetX) / (cLeft+cDragger+cRight) * 100;
-			newPercent = Math.min(Math.max(newPercent, 10), 90);
-			this.el.style.gridTemplateColumns = `${newPercent}% ${cDragger}px auto`;
+	onChangedDock()
+	{
+		this.el.style.gridTemplateRows = null;
+		this.el.style.gridTemplateColumns = null;
+		var cStyles = getComputedStyle(this.dragger.el);
+		if ((parseInt(cStyles.width) / parseInt(cStyles.height)) > 1 )
+			this.isVert = true;
+	}
+
+	onTypingDone()
+	{
+		try {
+			var newDemo = eval("["+this.code.getText()+"]");
+			//var newDemo = Function('return '+this.code.getText())();
+		} catch (e) {
+			this.errorMsg.setLabel(""+e);
+			this.code.setClass('syntaxError', true);
+			return;
 		}
+		this.errorMsg.setLabel("");
+		this.code.setClass('syntaxError', false);
+		this.demo.replaceChildren(newDemo);
 	}
 }
 
 
-let bableMap = {
-	"Panel": "_panels.Panel",
-	"PanelHeader": "_panels.PanelHeader",
-	"PanelBody": "_panels.PanelBody",
-	"Component": "_component.Component"
-}
 
-export class BGAtomRedomExamples extends Panel {
-	// this is the static Entrypoint to enabled adding this view to Atom packages easily. This is in a node package so we cant
-	// activate it automatically. A package can call BGAtomRedomExamples.Singleton('activate'), .'deactivate' and 'toggle'
-	static Singleton(cmd) {
-		if (!window.atom) return;
-		switch (cmd) {
-			case 'activate':
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
+// class BGAtomRedomExamples
+
+
+export class BGAtomRedomExamples extends Component // Panel
+{
+	// this is the static Entrypoint that manages a global instance of BGAtomRedomExamples.
+	// An atom package can simply import and call BGAtomRedomExamples.Singleton('activate') which registers atom commands that call
+	// Singleton with the various cmds.
+	static Singleton(cmd='activate', ...args)
+	{
+		try {
+			if (!window.bgAtomRedomExamples && cmd!='deactivate') {
 				window.bgAtomRedomExamples = new BGAtomRedomExamples({class: 'BGAtomRedomExamples', tabIndex: 1});
-				break;
-			case 'deactivate':
-				if (window.bgAtomRedomExamples) {
-					window.bgAtomRedomExamples.disposables.dispose();
-					delete window.bgAtomRedomExamples;
-				}
-				break;
-			case 'show':
-			case 'toggle':
-				if (window.bgAtomRedomExamples)
-					window.bgAtomRedomExamples.toggle((cmd=='show')?true:undefined);
-				else {
-					window.bgAtomRedomExamples = new BGAtomRedomExamples({class: 'BGAtomRedomExamples', tabIndex: 1});
-					window.bgAtomRedomExamples.show();
-				}
-				break;
-		}
-	}
-	static SetLocation(location) {
-		if (BGAtomRedomExamples.location != location) {
-			BGAtomRedomExamples.location = location;
-			if (window.bgAtomRedomExamples) {
-				var isShown = window.bgAtomRedomExamples.shown;
-				window.bgAtomRedomExamples.destroy();
-				delete window.bgAtomRedomExamples;
-				window.bgAtomRedomExamples = new BGAtomRedomExamples({class: 'BGAtomRedomExamples', tabIndex: 1});
-				if (isShown)
-					window.bgAtomRedomExamples.show();
+				MixInto(AtomViewMixin, window.bgAtomRedomExamples);
 			}
+
+			switch (cmd) {
+				case 'activate':
+					// nothing to do since we create the instance if needed at the top of this function. If a package does not
+					// want to show the example, it can call 'activate' so that the commands get registered
+				break;
+
+				case 'deactivate':
+					if (window.bgAtomRedomExamples) {
+						window.bgAtomRedomExamples.destroy();
+						delete window.bgAtomRedomExamples;
+					}
+				break;
+
+				case 'show':   window.bgAtomRedomExamples.show();   break;
+				case 'hide':   window.bgAtomRedomExamples.hide();   break;
+				case 'toggle': window.bgAtomRedomExamples.toggle(); break;
+
+				case 'setLocation':
+					var location = args[0];
+					if (window.bgAtomRedomExamples.location != location) {
+						var isShown = window.bgAtomRedomExamples.shown;
+						window.bgAtomRedomExamples.hide();
+
+						switch (location) {
+							case 'ModalPanel':    bgAtomRedomExamples.paneledParent = bgAtomRedomExamples.plugin.getWorkspace().addModalPanel({   item: bgAtomRedomExamples.el, visible: false, autoFocus: true}); break;
+							case 'TopPanel':      bgAtomRedomExamples.paneledParent = bgAtomRedomExamples.plugin.getWorkspace().addTopPanel({     item: bgAtomRedomExamples.el, visible: false}); break;
+							case 'BottomPanel':   bgAtomRedomExamples.paneledParent = bgAtomRedomExamples.plugin.getWorkspace().addBottomPanel({  item: bgAtomRedomExamples.el, visible: false}); break;
+							case 'LeftPanel':     bgAtomRedomExamples.paneledParent = bgAtomRedomExamples.plugin.getWorkspace().addLeftPanel({    item: bgAtomRedomExamples.el, visible: false}); break;
+							case 'RightPanel':    bgAtomRedomExamples.paneledParent = bgAtomRedomExamples.plugin.getWorkspace().addRightPanel({   item: bgAtomRedomExamples.el, visible: false}); break;
+							case 'HeaderPanel':   bgAtomRedomExamples.paneledParent = bgAtomRedomExamples.plugin.getWorkspace().addHeaderPanel({  item: bgAtomRedomExamples.el, visible: false}); break;
+							case 'FooterPanel':   bgAtomRedomExamples.paneledParent = bgAtomRedomExamples.plugin.getWorkspace().addFooterPanel({  item: bgAtomRedomExamples.el, visible: false}); break;
+						}
+
+						this.paneledParent.view = this;
+						this.paneledParent.getElement().classList.add('BGAtomRedomExamples')
+
+						window.bgAtomRedomExamples.location = location;
+
+						if (isShown)
+							window.bgAtomRedomExamples.show();
+					}
+				break;
+			}
+		} catch (e) {
+			BGError.logErrorToConsole(e,"Caught in BGAtomRedomExamples.Singleton()")
 		}
 	}
 
-	constructor(...options) {
+	constructor(...options)
+	{
 		super(...options);
 		this.disposables = new Disposables();
-		this.uri = 'bg://uiExamples';
+		this.uri = 'bg://ComponentUIExamples';
 
+		// BGGetPlugin finds the containing plugin application this code is running under or null if its not running in a plugin
+		this.plugin = BGGetPlugin();
+
+		this.examplesOrder = [];
 		for (const name in exampleData) {
 			this.addExample(name, exampleData[name]);
 		}
 
-		// hide them all, initially
-		for (var i=0; i<this.mounted.length; i++)
-			this[this.mounted[i]].el.style.display="none";
-
 		// init the selection mechanism and select the first example
-		this.selectedIndex = 0;
-		this.selectExample(0);
+		this.selectedIndex = null;
+		if (this.examplesOrder.length > 0)
+			this.selectExample(this.examplesOrder[0]);
 
-		switch (BGAtomRedomExamples.location) {
-			case 'ModalPanel':    this.paneledParent = atom.workspace.addModalPanel({   item: this.el, visible: false, autoFocus: true}); break;
-			case 'TopPanel':      this.paneledParent = atom.workspace.addTopPanel({     item: this.el, visible: false}); break;
-			case 'BottomPanel':   this.paneledParent = atom.workspace.addBottomPanel({  item: this.el, visible: false}); break;
-			case 'LeftPanel':     this.paneledParent = atom.workspace.addLeftPanel({    item: this.el, visible: false}); break;
-			case 'RightPanel':    this.paneledParent = atom.workspace.addRightPanel({   item: this.el, visible: false}); break;
-			case 'HeaderPanel':   this.paneledParent = atom.workspace.addHeaderPanel({  item: this.el, visible: false}); break;
-			case 'FooterPanel':   this.paneledParent = atom.workspace.addFooterPanel({  item: this.el, visible: false}); break;
-			default:
-				this.disposables.add(atom.workspace.addOpener((uri) => {
-					if (uri == this.uri)
-						return this;
-				}));
-				break;
+		if (this.plugin) {
+			this.plugin.getWorkspace().onDidStopChangingActivePaneItem((item)=>{if (item===this) this.onChangedDock(item)})
+
+			this.plugin.addURIOpenner(this.uri, ()=>{return this;} );
+
+			this.plugin.addCommand('BGAtomRedomExamples:show',           ()=>this.show()           );
+			this.plugin.addCommand('BGAtomRedomExamples:hide',           ()=>this.hide()           );
+			this.plugin.addCommand('BGAtomRedomExamples:selectNext',     ()=>this.selectNext()     );
+			this.plugin.addCommand('BGAtomRedomExamples:selectPrevious', ()=>this.selectPrevious() );
 		}
+	}
 
-		if (this.paneledParent) {
-			this.paneledParent.view = this;
-			this.paneledParent.getElement().classList.add('BGAtomRedomExamples')
-		}
-
-		atom.commands.add('atom-workspace', {
-			'BGAtomRedomExamples:selectNext':     ()=>this.selectNext(),
-			'BGAtomRedomExamples:selectPrevious': ()=>this.selectPrevious()
-		});
+	onChangedDock(item, ...p)
+	{
+		if (item === this)
+			for (const name in this.examples) {
+				this.examples[name].onChangedDock(item, ...p);
+			}
 	}
 
 	show()   {
@@ -201,55 +258,56 @@ export class BGAtomRedomExamples extends Panel {
 			this.hide();
 	}
 
-	addExample(name, codeText) {
+	addExample(name, codeText)
+	{
 		codeText = codeText.replace(/(^\t+ )|(^\n*)|(\s*$)/gm,'');
-		// var displayText = codeText.replace(/^\t+ /gm,'|');
-		// var displayText = codeText.replace(/^\n*/gm,'<');
-		// var displayText = codeText.replace(/\s*$/gm,'>');
 		this.mount(new OneDemoAndCodeView(
-			name,
-			eval( replaceAll(codeText, bableMap)),
-			codeText
-			// "function "+name+"(\n{\n"+codeText+"\n}\n"
-		))
+			"examples["+name+"]",
+			codeText,
+			{display:'none'}
+		));
+		this.examplesOrder.push(name);
 	}
 
-	selectExample(name) {
-		if (typeof name == 'string') {
-			for (var i=0; i<this.mounted.length && this.mounted[i]!=name; i++);
-			if (i<this.mounted.length)
-				this.selectExample(i);
-		} else if (name>=0 && name<this.mounted.length) {
-			this[this.mounted[this.selectedIndex]].el.style.display = "none";
-			this.selectedIndex = name;
-			this[this.mounted[this.selectedIndex]].el.style.display = "";
-			this[this.mounted[this.selectedIndex]].code.el.focus();
-		}
-	}
-	selectNext() {
-		this.selectExample((this.selectedIndex+1) % this.mounted.length);
-	}
-	selectPrevious() {
-		this.selectExample((((this.selectedIndex-1) % this.mounted.length)+this.mounted.length) % this.mounted.length);
+	selectExample(name)
+	{
+		if (name === null || name === undefined)
+			return
+		if (!(name in this.examples))
+			throw new BGError("name is not found in examples", {name, examples:this.examples, selected:this.selectedIndex});
+
+		if (this.selectedIndex && (this.selectedIndex in this.examples) )
+			this.examples[this.selectedIndex].hide();
+
+		this.selectedIndex = name;
+		this.examples[this.selectedIndex].show();
+		this.examples[this.selectedIndex].focus();
 	}
 
-	getTitle()            {return 'bg-dom Examples';}
-	getElement()          {return this.el;}
-	getDefaultLocation()  {return 'bottom';}
-	getAllowedLocations() {return ['left','right','center','bottom'];}
-	getURI()              {return this.uri;}
-	isPermanentDockItem() {return false}
-	onDidDestroy(callback) {
-		this.onDidDestroy = callback;
-		return {dispose: ()=>{this.onDidDestroy=null}}
+	selectNext()
+	{
+		var curIndx = -1;
+		for (const i=0; i<this.examplesOrder.length && curIndx<0; i++)
+			if (this.examplesOrder[i] == this.selectedIndex)
+				curIndx = i;
+		var newIndx = (curIndx+1) % this.examplesOrder.length;
+
+		this.selectExample(this.examplesOrder[newIndx]);
+	}
+	selectPrevious()
+	{
+		var curIndx = -1;
+		for (const i=0; i<this.examplesOrder.length && curIndx<0; i++)
+			if (this.examplesOrder[i] == this.selectedIndex)
+				curIndx = i;
+		var newIndx = (curIndx>0) ? (curIndx-1) : (this.examplesOrder.length-1);
+
+		this.selectExample(this.examplesOrder[newIndx]);
 	}
 
-	dispose() {
-		this.disposables.dispose();
-	}
 
 	destroy() {
-		this.dispose();
+		this.disposables.dispose();
 		if (this.paneledParent)
 			this.paneledParent.destroy();
 		else
