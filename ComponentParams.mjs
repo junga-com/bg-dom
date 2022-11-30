@@ -737,19 +737,19 @@ export class ComponentParams
 		}
 	}
 
-	// this translates our tagIDClasses syntax into REDOM's construction syntax so we can call el to create the DOM node
-	// we can probably make the dom el more effieciently than redom's el now but we can optimize that later.
-	makeREDOMTagString()
-	{
-		var redomTagStr = this.tagName
-		if (this.idName)
-			redomTagStr += "#"+this.idName;
-		if (this.className) {
-			redomTagStr += "."+this.className.replace(/(^\s+)|(\s+$)/,'').replace(/\s+/g,'.')
-		}
-
-		return redomTagStr || '';
-	}
+	// // this translates our tagIDClasses syntax into REDOM's construction syntax so we can call el to create the DOM node
+	// // we can probably make the dom el more effieciently than redom's el now but we can optimize that later.
+	// makeREDOMTagString()
+	// {
+	// 	var redomTagStr = this.tagName
+	// 	if (this.idName)
+	// 		redomTagStr += "#"+this.idName;
+	// 	if (this.className) {
+	// 		redomTagStr += "."+this.className.replace(/(^\s+)|(\s+$)/,'').replace(/\s+/g,'.')
+	// 	}
+	//
+	// 	return redomTagStr || '';
+	// }
 
 	// return a composite callback that invokes all the callbacks specified in the ComponentParams as the given type/name
 	getCompositeCB(cbName='defaultCB', forceFlag=false)

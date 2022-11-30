@@ -2,8 +2,6 @@ import { BGError }            from './BGError';
 import { ComponentParams }    from './ComponentParams'
 import { domTreeChanges }     from './DomHooks'
 
-import { el as redomHtml }    from 'redom';
-
 
 // Library componentCore
 // This library implements the core bgdom component functionality that is used by the Component and Button (and other?) class
@@ -113,6 +111,7 @@ export const reHTMLContent  = /^\s*<[^>]+>/;
 export const reVarName      = /^[_a-zA-Z][_a-zA-Z0-9]*(\[.*\])?$/;
 
 
+const xlinkns = 'http://www.w3.org/1999/xlink';
 
 
 
@@ -676,17 +675,6 @@ export function ComponentUnmount($parent, $child)
 		if (!name && (bgComponent in child))
 			name=child.name;
 
-		// 2022-11 bobg: commented this block out. It seems probalematic. it has a break; which i think is not valid since we are not in a loop
-		//               but i have not been getting errors so I think it fails. if it did not fail, I think it would mess up the code below
-		//               because it would choose the named path and name would be an obj instead of a string.
-		// we support adding a DOM node as a named child so we can not assume that child identifies its name in any way so
-		// we have to iterate the named children and see if we find child
-		if (!name) for (const cName of parent.mounted) if (parent[cName]===child) {
-throw new BGError("yall see this?");
-			name = cName
-			break;
-		}
-
 		// remove an unnamed relation from the parent if the parent supports it
 		if (!name && Array.isArray(parent.mountedUnamed)) {
 			var i = parent.mountedUnamed.indexOf(child);
@@ -768,7 +756,50 @@ export function Html(tagIDClasses, ...p)
 export function ComponentMakeDOMNode(componentParams, bgComp)
 {
 	// if the ctor params indicated that we are wrapping an existing node, use it, otherwise create a new one
-	const el = componentParams.wrapNode || redomHtml(componentParams.makeREDOMTagString(), Object.assign({}, componentParams.props, {style:componentParams.styles}));
+	var el = componentParams.wrapNode;
+	if (!el) {
+		el = document.createElement(componentParams.tagName);
+
+		if (componentParams.idName)
+			el.id = componentParams.idName;
+
+		if (componentParams.className)
+			el.className = componentParams.className.trim().replace(/\s+/g,' ');
+
+		var isSVG = el instanceof SVGElement;
+
+		for (var propName in componentParams.props) {
+			var propValue = componentParams.props[propName];
+			var isFunc = typeof propValue === 'function';
+
+			if (isSVG && isFunc) {
+				el[propName] = propValue;
+			} else if (propName === 'dataset') {
+				for (var key in propValue||{})
+					if (propValue[key] != null)
+						el.dataset[key] = propValue[key];
+					else
+						delete el.dataset[key];
+			} else if (isSVG && (propName === 'xlink')) {
+				for (var key in propValue||{})
+					if (propValue[key] != null)
+						el.setAttributeNS(xlinkns, key, propValue[key]);
+					else
+						el.removeAttributeNS(xlinkns, key, propValue[key]);
+			} else if (!isSVG && (propName in el || isFunc) && (propName !== 'list')) {
+				el[propName] = propValue;
+			} else {
+				if (propValue == null) {
+					el.removeAttribute(propName);
+				} else {
+					el.setAttribute(propName, propValue);
+				}
+			}
+		}
+
+		for (var styleName in componentParams.styles)
+			el.style[styleName] = componentParams.styles[styleName] == null ? '' : componentParams.styles[styleName];
+	}
 	global.lifeCycleChecker && lifeCycleChecker.mark(bgComp||el, 'ctor');
 	domTreeChanges.addToWatch(el);
 

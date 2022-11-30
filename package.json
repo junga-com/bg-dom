@@ -1,7 +1,7 @@
 {
   "name": "bg-dom",
   "main": "esmToCjsBridge.js",
-  "module": "./bg-dom.js",
+  "module": "./bg-dom.mjs",
   "version": "2.4.4",
   "description": "UI Component library similar to REDOM and compliant with the Atom style guide",
   "keywords": [
@@ -29,7 +29,6 @@
   "dependencies": {
     "esm": "^3.2.25",
     "json5": "^2.1.3",
-    "node-version-compare": "^1.0.3",
-    "redom": "^3.24.2"
+    "node-version-compare": "^1.0.3"
   }
 }

@@ -1,7 +1,7 @@
 import {RegisterPackage} from './GlobalServices'
 RegisterPackage(__filename);
 
-export * from './GlobalServices.js'
+export * from './GlobalServices'
 export * from './Disposables'
 export * from './BGPromise'
 export * from './parameters'
