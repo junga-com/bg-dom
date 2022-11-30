@@ -4,31 +4,6 @@ import { TextEditor, GridDragger }       from './miscellaneous'
 import { Disposables }                   from './Disposables'
 import { BGError }                       from './BGError'
 
-function MixInto(SourceClass, targetObj) {
-	console.log({SourceClass, targetObj});
-	Object.assign(targetObj, SourceClass);
-}
-
-var AtomViewMixin = {
-	// View Interface for Atom...
-	getTitle            : function() {return 'bg-dom Examples';},
-	getElement          : function() {return this.el;},
-	getDefaultLocation  : function() {return 'bottom';},
-	getAllowedLocations : function() {return ['left','right','center','bottom'];},
-	getURI              : function() {return this.uri;},
-	isPermanentDockItem : function() {return false},
-	onDidDestroy        : function(callback) {
-		if (!Array.isArray(this.onDidDestroy))
-			this.onDidDestroy = [];
-		this.onDidDestroy.push(callback);
-		return {dispose: ()=>{
-			var indx = this.onDidDestroy.indexOf(callback);
-			if (indx>=0)
-				this.onDidDestroy.splice(indx, 1);
-		}}
-	}
-}
-
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
 // The Initial Sample Data as code text strings

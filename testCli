@@ -1,0 +1,8 @@
+#!/usr/bin/env node-esm
+
+
+import { ClassMixin } from './ClassMixin.mjs';
+
+console.log(process.version)
+
+console.log("here");

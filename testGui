@@ -1,0 +1,9 @@
+#!/usr/bin/env electron-win-esm
+
+
+import { ClassMixin } from './ClassMixin.mjs';
+
+console.log(process.version)
+console.log(process.env.NODE_PATH)
+
+console.log("here");

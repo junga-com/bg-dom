@@ -3,6 +3,17 @@ const { shell } = require("electron");
 import { BGError } from './BGError';
 import fs from 'fs';
 
+
+// This is a WIP. First usecase is BGAtomView. We want Components we write to be useful in web and in Atom so we mixin BGAtomViewMixin
+// when an Atom package creates the view component
+export function MixInto(SourceClass, targetObj, options) {
+	console.log({SourceClass, targetObj});
+	Object.assign(targetObj, SourceClass);
+}
+
+
+
+
 // usage: <App> BGGetPlugin()
 // This gets the controlling Plugin Application that the code is executing under. If the code is not running under a plugin it returns
 // null. (? should it return the Application in this case?)
