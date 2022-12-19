@@ -4,13 +4,6 @@ import { BGError } from './BGError';
 import fs from 'fs';
 
 
-// This is a WIP. First usecase is BGAtomView. We want Components we write to be useful in web and in Atom so we mixin BGAtomViewMixin
-// when an Atom package creates the view component
-export function MixInto(SourceClass, targetObj, options) {
-	console.log({SourceClass, targetObj});
-	Object.assign(targetObj, SourceClass);
-}
-
 
 
 
@@ -214,8 +207,8 @@ export class GridDragger extends Dragger
 {
 	constructor(...p) {
 		super('$div.dragger', {defaultCBName:'onDragCB'}, ...p)
-		this.dragCB = this.componentParams.getCompositeCB('onDragCB');
-		this.el.onpointerdown = (e)=>this.onDragStart(e);
+//		this.dragCB = this.componentParams.getCompositeCB('onDragCB');
+//		this.el.onpointerdown = (e)=>this.onDragStart(e);
 	}
 
 	onMounted() {
@@ -325,6 +318,33 @@ export class GridDragger extends Dragger
 		//console.log("!!! splitNow="+splitNow+"    "+(parseFloat(splitNow[this.splitAfterIndx])+parseFloat(splitNow[this.splitBeforeIndx]) ) );
 	}
 }
+
+
+
+export class BorderDragger extends Dragger
+{
+	constructor(position, ...p) {
+		super('$div.dragger', ...p)
+		this.position = position;
+	}
+
+	onConnected()
+	{
+	}
+
+	onDrag(event)
+	{
+		switch (this.position) {
+			case 'right':
+				var cStyles = getComputedStyle(this.parent.el);
+				this.parent.el.style.width = cStyles.width + event.offsetX;
+			break;
+		}
+	}
+}
+
+
+
 
 
 // usage: new BackgroundMessage(<msg> [,"centered"])

@@ -34,13 +34,13 @@ import { Disposables }       from './Disposables';
 //
 export class InputField {
 	constructor(...p) {
-		const componentParams = new ComponentParams(...p, "$label", {paramNames:"inputCntr inputCntrTag onTypingCB", defaultCBName:onActivatedCB});
+		const componentParams = new ComponentParams(...p, "$label", {paramNames:"inputCntr inputCntrTag onTypingCB", defaultCBName:'onActivatedCB'});
 
 		// this implements dynamic construction where the parameters determine the specific component class to construct
 		if (componentParams.Constructor && componentParams.Constructor  != new.target)
 			return new componentParams.Constructor(componentParams);
 
-		ComponentMakeDOMNode(componentParams, this)
+		this.el = ComponentMakeDOMNode(componentParams, this)
 
 		this.disposables = new Disposables();
 		this.componentParams = componentParams;
@@ -67,7 +67,7 @@ export class InputField {
 		}
 
 		// If the innerHTML includes the placeholder '<input/>' then that will determine where we place the inputCntr.
-		var placeholder = this.el.getElementsByTagName("input")
+		var placeholder = this.el.getElementsByTagName(this.inputCntrTag)
 		if (placeholder.length > 1)
 			throw new BGError("constructing an Inputfield, more than one <input> child was specified in the innerHTML")
 		placeholder = (placeholder.length >0) ? placeholder[0] : null;

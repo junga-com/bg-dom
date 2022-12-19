@@ -12,8 +12,8 @@ export const reContentIDClassesClassifiers = {
 	tagName   : 'top',
 	idName    : 'top',
 	className : 'className',
-	icon      : 'optParams',
-	label     : 'optParams'
+	icon      : 'optParam',
+	label     : 'optParam'
 }
 
 export const reDOMCallbackProp = /^on[a-z]/;
@@ -513,7 +513,9 @@ export class ComponentParams
 					if (('nodeType' in param) || ('el' in param)) {
 						this.reduceAttribute(null, 'content',       'object', param);
 
-					// all other objects are interpretted as containers of named parameters
+					// all other objects are interpretted as containers of named parameters. Each member of this object could be
+					// a named parameter that needs to be classified or a sub-object props:{}, styles:{}, or optParams:{} that will
+					// be further reduced.
 					} else {
 						for (var name in param)
 							this.reduceAttribute(name,  null,      null,    param[name]);
@@ -525,7 +527,11 @@ export class ComponentParams
 					// note that we could check to see if the string matches the reContentIDClasses regex and treat it as content otherwise
 					// but its more conservative to let reduceAttribute throw an exception since it could be a subtle error in syntax.
 					// 2022-11 bobg: been using for a while and it seems clear that top level strings should only be tagIDClasses.
-					//               the convention to wrap things in [] to declare that they are content (including strings) is good.
+					//               the convention to wrap things in [] to declare that they are content (including strings) is a
+					//               convenient way to specify that a string is a construction param instead of a tagIDClasses and
+					//               often the string construction param is a tagIDClasses so we need to explicitly state whether it
+					//               should apply to this BGComp object (aka, unnamed top level string) or a child to be created
+					//               (aka a string inside an array)
 					this.reduceAttribute(null, 'tagIDClasses', 'string', param);
 				break;
 
@@ -557,13 +563,23 @@ export class ComponentParams
 	// return a classifier string which determines how to reduce the attribute.
 	// The main loop in the ctor named all the unnamed parameters but now we need to determine how to process them. The classifier
 	// string returned by this method groups together parameters that are processed the same way even if they have different names
+	// Note that this function only tries to fill in classifier and valueType if they are not already known. If either are passed in,
+	// it passes them through to the returned array, unchanged. Sometimes the context of the processing already knows those values.
+	// Why?
+	//    We classify and then process because some things can be identified multiple ways. For example, a prop could be a named param
+	//    that is not recognized to be something else, or it could be inside a {props:{name:value}} that explicitly identifies it as a
+	//    property and not a style or optParam.
+	//    For simple name/value pairs its easy to call setSingleValuedAttr from mutiple places but content and contentSingle require
+	//    non-trivial processing blocks.
+	//    Counterpoint: we could create functions for each type of processing -- setContent, setContentSingle, etc...
 	// Classifiers:
 	//     content       : one child content or an array of child contents
 	//     contentSingle : a single child content. an array is construction params. objects can be DOMNode or BGNode
 	//     tagIDClasses  : the shorthand notation
 	//     noop          : its already been processed in the hoisting pass
 	//     props         : properties of the DOMNode that will be created
-	//     optParams     : properties of the BGNode
+	//     optParams     : an object containing properties that the builder will use to make the component
+	//     optParam      : an value to be put in the optParams sub object
 	//     styles        : styles added directly to the DOMNode
 	//     className     : a stringset of classNames
 	//     callback      : a function callback that either the DOMNode or the BGNode will invoke at some event
@@ -621,7 +637,7 @@ export class ComponentParams
 
 		// paramNames is the complete set of paramNames specified anywhere. We collect them in a separate first pass.
 		else if (name in this.paramNames)
-			classifier = 'optParams';
+			classifier = 'optParam';
 
 		else if (valueType == 'object')
 			throw new BGError("It is not valid to pass an object as this parameter name ", {name, value, valueType});
@@ -630,11 +646,11 @@ export class ComponentParams
 		// So far, its not common to specify styles so it hasn't been a problem that this list is not complete. Maybe we should
 		// only support styles in the styles:{...} container objects.
 		else if (name in knownStyleProperties)
-			classifier = 'styles';
+			classifier = 'style';
 
 		// default for unknown name/types is that they are element properties
 		else
-			classifier = 'props';
+			classifier = 'prop';
 
 		return [classifier, valueType];
 	}
@@ -647,8 +663,8 @@ export class ComponentParams
 		// fill in classifier and valueType if they are not known yet
 		[classifier, valueType] = this.classifyAttribute(name, classifier, valueType, value);
 
-		var objContainer
 		switch (classifier) {
+			// caller passed in something that could be a single BGComp or an array of contentSingle
 			case 'content':
 				if (valueType == 'array') {
 					for (const aryContent of value)
@@ -658,11 +674,13 @@ export class ComponentParams
 				}
 			return;
 
+			// caller passed in something that must be a single BGComp. If its an array, use it as construction parameters to create
+			// a BGComp
 			case 'contentSingle':
 				// TODO: we can either convert construction params (strings and arrays) into BGComp eagerly here, or just push the
-				//       construction params and let the build decide how to construct them. Will delaying construction change any
+				//       construction params and let the builder decide how to construct them. Will delaying construction change any
 				//       semantics? Could other children expect to finds siblings as BGComp when they are constructed? (I think not)
-				//       Maybe we need a new hoisted property to control wheter construction is 'eager' or 'lazy'
+				//       Maybe we need a new hoisted property to control whether construction is 'eager' or 'lazy'
 				if (this.defaultChildConstructor && valueType == 'array')
 					value.unshift({defaultConstructor:this.defaultChildConstructor})
 				this.content.push(value);
@@ -672,6 +690,7 @@ export class ComponentParams
 				// 	this.content.push(value);
 			return;
 
+			// caller passed in a class name either from a tagIDClasses string that was decomposed or a named param
 			case 'className':
 				// classes are not first come first serve except that '!' prevents additional classes from base classes from being added.
 				if ('className' in this.lockedParams)
@@ -684,9 +703,11 @@ export class ComponentParams
 				this.className += " "+value.replace(/[!.]/g, ' ');
 			return;
 
+			// caller passed in a hoisted named parameter like 'paramNames' or 'defaultCBName'
 			case 'noop':
 			return;
 
+			// caller passed in an unamed string or a named param named 'tagIDClasses'
 			case 'tagIDClasses':
 				var matched = reContentIDClasses.exec(value);
 				if (!matched)
@@ -701,6 +722,7 @@ export class ComponentParams
 				}
 			return;
 
+			// caller passed in a named or unnamed function
 			case 'callback':
 				if (!name)
 					name = 'defaultCB'
@@ -709,18 +731,43 @@ export class ComponentParams
 				this.callbacks[name].push(value);
 			return;
 
-			// set the objContainer on these so that we can handle them all with a common algorithm below
-			case 'top':       objContainer = this;           break;
-			case 'props':     objContainer = this.props;     break;
-			case 'styles':    objContainer = this.styles;    break;
-			case 'optParams': objContainer = this.optParams; break;
-		}
+			// caller passed in a named param that was determined to be an optParam
+			case 'optParam':
+				this.setSingleValuedAttr(this.optParams, classifier,  name, value);
+			return;
 
-		if (valueType == 'object') {
-			for (const key in value)
-				this.setSingleValuedAttr(objContainer, classifier,  key, value[key]);
-		} else {
-			this.setSingleValuedAttr(objContainer, classifier,  name, value);
+			// caller passed in a named param that was recognized as a top level param like 'name', 'idName', 'tagName'
+			case 'top':
+				this.setSingleValuedAttr(this, classifier,  name, value);
+			return;
+
+			// caller passed in
+			case 'prop':
+				this.setSingleValuedAttr(this.props, classifier,  name, value);
+			return;
+
+			// caller passed in
+			case 'style':
+				this.setSingleValuedAttr(this.styles, classifier,  name, value);
+			return;
+
+			// caller passed in
+			case 'optParam':
+				this.setSingleValuedAttr(this.optParams, classifier,  name, value);
+			return;
+
+			// caller passed in {props:{...}}, or {styles:{...}}, or {optParams:{...}}
+			// the value is an object that contains name/value pairs of the named type
+			case 'props':
+			case 'styles':
+			case 'optParams':
+				if (valueType != 'object')
+					throw new BGError(`A parameter to ComponentParams named '%s' must be an object containing name/value pairs of that type. A '%s' was passed in instead of an object. details=%O`,
+					 					name, valueType, {ComponentParams:this, name, classifier, valueType, value});
+				var singularClassifier = classifier.slice(0,-1);
+				for (const key in value)
+					this.setSingleValuedAttr(this[classifier], singularClassifier,  key, value[key]);
+			return;
 		}
 	}
 

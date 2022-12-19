@@ -11,11 +11,16 @@ const MoveModes = {
 //       constructor(targetClass) {
 //          super(targetClass, '');
 //       }
-//       getTitle            : function() {return 'bg-dom Examples';},
+//       _constructor() {
+//          this.atom ={};
+//          this.atom.title = this.label || this.name || '';
+//          this.atom.uri   = '';
+//       }
+//       getTitle            : function() {return this.atom.title;},
 //       getElement          : function() {return this.el;},
 //       getDefaultLocation  : function() {return 'bottom';},
 //       getAllowedLocations : function() {return ['left','right','center','bottom'];},
-//       getURI              : function() {return this.uri;},
+//       getURI              : function() {return this.atom.uri;},
 //
 //    }
 export class ClassMixin {
@@ -23,7 +28,6 @@ export class ClassMixin {
 		this.name = this.constructor.name;
 		this.targetClass = targetClass;
 		this.propsToReplace = propsToReplace;
-
 
 		this.targetClass[`mixin_${this.name}`] = {}
 		this.stateObj = this.targetClass[`mixin_${this.name}`];

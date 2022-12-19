@@ -6,6 +6,7 @@ import {
 	bgeDisconnected
 }  from './componentCore';
 
+// TODO: consider document.createTreeWalker to fire events more efficiently
 
 // The purpose of this class is to generate onConnected family of events for bgComponents when they are connected/disconnected
 // to/from the document.documentElement tree. The DOM provides the isConnected attribute but not an event when it changes
