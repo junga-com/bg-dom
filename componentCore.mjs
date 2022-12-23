@@ -1,7 +1,10 @@
 import { BGError }            from './BGError';
-import { ComponentParams }    from './ComponentParams'
-import { domTreeChanges }     from './DomHooks'
+import { ComponentParams }    from './ComponentParams';
+import { domTreeChanges }     from './DomHooks';
+import icons                  from '@primer/octicons';
 
+// make aliases for some icon names
+icons.close = icons.x;
 
 // Library componentCore
 // This library implements the core bgdom component functionality that is used by the Component and Button (and other?) class
@@ -757,7 +760,18 @@ export function ComponentMakeDOMNode(componentParams, bgComp)
 {
 	// if the ctor params indicated that we are wrapping an existing node, use it, otherwise create a new one
 	var el = componentParams.wrapNode;
-	if (!el) {
+	if (!el && (componentParams.tagName == 'icon' || componentParams.optParams.icon)) {
+		var iconName = componentParams.optParams.icon || componentParams.optParams.label;
+		var iconObj = icons[iconName];
+		if (!iconObj) {
+			iconObj = icons["alert"];
+			console.warn(`icon (${iconName}) not found. Used alert icon as standin`);
+		}
+		el = document.createElement('div');
+		el.innerHTML = iconObj.toSVG();
+		el = el.firstChild;
+	}
+	else if (!el) {
 		el = document.createElement(componentParams.tagName);
 
 		if (componentParams.idName)

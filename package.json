@@ -27,6 +27,7 @@
   },
   "homepage": "https://github.com/junga-com/bg-dom#readme",
   "dependencies": {
+    "@primer/octicons": "^17.10.0",
     "esm": "^3.2.25",
     "json5": "^2.1.3",
     "node-version-compare": "^1.0.3"

@@ -321,6 +321,7 @@ export class GridDragger extends Dragger
 
 
 
+// usage: new BorderDragger('left'|'right'|'top'|'bottom' [, ...<componentParams>])
 export class BorderDragger extends Dragger
 {
 	constructor(position, ...p) {
@@ -328,17 +329,14 @@ export class BorderDragger extends Dragger
 		this.position = position;
 	}
 
-	onConnected()
+	onDragMove(event)
 	{
-	}
-
-	onDrag(event)
-	{
+		var cStyles = getComputedStyle(this.parent.el);
 		switch (this.position) {
-			case 'right':
-				var cStyles = getComputedStyle(this.parent.el);
-				this.parent.el.style.width = cStyles.width + event.offsetX;
-			break;
+			case 'right' : this.parent.el.style.width  = (parseFloat(cStyles.width)    +   event.offsetX) + "px"; break;
+			case 'left'  : this.parent.el.style.width  = (parseFloat(cStyles.width)    -   event.offsetX) + "px"; break;
+			case 'bottom': this.parent.el.style.height = (parseFloat(cStyles.height)   +   event.offsetY) + "px"; break;
+			case 'top'   : this.parent.el.style.height = (parseFloat(cStyles.height)   -   event.offsetY) + "px"; break;
 		}
 	}
 }
