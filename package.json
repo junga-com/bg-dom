@@ -2,6 +2,10 @@
   "name": "bg-dom",
   "main": "esmToCjsBridge.js",
   "module": "./bg-dom.mjs",
+  "exports": {
+      ".": "./bg-dom.mjs"
+  },
+  "type": "module",
   "version": "2.4.4",
   "description": "UI Component library similar to REDOM and compliant with the Atom style guide",
   "keywords": [

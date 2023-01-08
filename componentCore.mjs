@@ -1,6 +1,7 @@
-import { BGError }            from './BGError';
-import { ComponentParams }    from './ComponentParams';
-import { domTreeChanges }     from './DomHooks';
+import { BGError }            from './BGError.mjs';
+import { ComponentParams }    from './ComponentParams.mjs';
+import { Component }          from './component.mjs';
+import { domTreeChanges }     from './DomHooks.mjs';
 import icons                  from '@primer/octicons';
 
 // make aliases for some icon names
@@ -131,8 +132,8 @@ const xlinkns = 'http://www.w3.org/1999/xlink';
 export function ComponentToEl(bgComp)
 {
 	if (bgComp) {
-		if (bgComp.nodeType)    return bgComp;
-		if (bgComp.el.nodeType) return bgComp.el;
+		if (bgComp && bgComp.nodeType)                 return bgComp;
+		if (bgComp && bgComp.el && bgComp.el.nodeType) return bgComp.el;
 	}
 	throw new BGError("bgComp could not be identified as anything that leads to a DOMNode", {bgComp});
 }
@@ -157,6 +158,7 @@ export function ComponentToEl(bgComp)
 //                  'null'     : return null
 //                  'force'    : return <bgComp> even though its a DOMNode and not a BGNode
 //                  'climb'    : climb up the parent chain of bgComp to find a BGNode
+//                  'create'   : create a new BGNode for this DOMNode
 export function ComponentToBG(bgComp, forceFlag) {
 	// we cant do nothin with nothin
 	if (!bgComp)
@@ -192,6 +194,10 @@ export function ComponentToBG(bgComp, forceFlag) {
 
 		case 'null':
 			return null;
+
+		case 'create':
+			ret = new Component(Component.wrapNode, bgComp);
+			return ret;
 
 		default:
 			throw new BGError("the bgComp does not have a corresponding BGNode object", {bgComp});
@@ -268,33 +274,68 @@ export function NodeTraceName(node)
 		return "(unexpected type)" + typeof node + ": " + node;
 }
 
-// usage: <string> ComponentGetName(<BGCComp> bgComp, <boolean> terseFlag)
+// usage: <string> ComponentGetName(<BGCComp> bgComp, <boolean> options)
 // return the best name for the bgComp. If is has a name field, use that, otherwise use the makeTagIDClasses algorithm
-export function ComponentGetName(bgComp, terseFlag) {
+export function ComponentGetName(bgComp, options={})
+{
 	if (!bgComp)
 		return '';
 
 	const [bgObj, bgEl] = ComponentNormalize(bgComp);
 
-	if (bgObj)
+	// if there are both bgEl.id and bgObj[bgComponentName], they should be the same so it does not matter which we choose
+	if (bgObj && (bgComponentName in bgObj) && bgObj[bgComponentName])
 		return bgObj[bgComponentName];
-	else if (bgObj && typeof bgObj.name=='string')
+	else if (bgEl && bgEl.id)
+		return bgEl.id;
+	else if (bgObj && typeof bgObj.name=='string' && bgObj.name)
 		return bgObj.name;
+	else if (options.bgnameOnly)
+		return null;
 	else
-		return ComponentParams.makeTagIDClasses(bgEl, terseFlag);
+		return ComponentParams.makeTagIDClasses(bgEl, options);
 }
 
 // return the hierarchical name of this bgComp in the DOM
-export function ComponentGetMountedName(bgComp, terseFlag) {
-	var mountedName = ComponentGetName(bgComp, terseFlag);
+// The idea is that this name should be enough to look up the bgComp in the DOM.
+// The root of the hierarchical name will either be the $html (the root node of the document) node or a node that has an #id since
+// #id is unique in the document. Either way, the mounted name is an identifier that can be used to retrieve the node/element
+export function ComponentGetMountedName(bgComp, options={})
+{
+	var mountedName = ComponentGetName(bgComp, options);
 	var p=ComponentGetParent(bgComp);
-	while (p) {
-		mountedName = ComponentGetName(p, terseFlag) + '/' + mountedName;
+	while (p && ! mountedName.startsWith("#")) {
+		var pEl = ComponentToEl(p);
+		if (pEl && pEl.id)
+			mountedName = "#"+pEl.id + '/' + mountedName;
+		else
+			mountedName = ComponentGetName(p, options) + '/' + mountedName;
 		p=ComponentGetParent(p);
 	}
 	return mountedName;
 }
 
+export function ComponentGet(mountedName)
+{
+	var parts = mountedName.split('/');
+	var startPart = parts.shift();
+	var resultObj = null, resultEl = null, $result = null;
+	if (startPart == "$html")
+		[resultObj, resultEl, $result] = ComponentNormalize(document.getElementsByTagName('html')[0]);
+	else if (startPart.startsWith("#"))
+		[resultObj, resultEl, $result] = ComponentNormalize(document.getElementById(startPart.replace(/^#/,"")));
+	// TODO: consider crafting a selector to pass to resultEl.querySelector() instead of iterating.
+	while (parts.length > 0) {
+		var part = parts.shift();
+		if (resultObj && (part in resultObj))
+			[resultObj, resultEl, $result] = ComponentNormalize(resultObj[part]);
+		else if (part.startsWith('$'))
+			[resultObj, resultEl, $result] = ComponentNormalize(resultEl.getElementsByTagName(part.replace(/^\$/,""))[0]);
+		else
+			[resultObj, resultEl, $result] = ComponentNormalize(resultEl.getElementsByClassName(part)[0]);
+	}
+	return $result;
+}
 
 
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -354,7 +395,8 @@ export function ComponentGetMountedName(bgComp, terseFlag) {
 // Form1.  You can pass 'unnamed' as the first paramter to avoid this ambiguity and still result in an unnamed child.
 //    Form1: ComponentMount(<parent>, <name>, <childContent> [,<insertBefore>])
 //    Form2: ComponentMount(<parent>, <childContent> [,<insertBefore>])
-export function ComponentMount($parent, p1, p2, p3, trace) {
+export function ComponentMount($parent, p1, p2, p3, trace)
+{
 	// detect form1 and form2
 	var name, childContent, insertBefore;
 	// if p3 is specified the user must have called with 3 params so it must be form 1
@@ -432,11 +474,14 @@ export function ComponentMount($parent, p1, p2, p3, trace) {
 							?name
 							:name+"[]";
 
+				if (childName && parentObj && (bgComponent in parentObj) && (childName in parentObj))
+					throw new BGError("can not mount this child component because its name is already taken in the parent", {childName,parent, child:aryElement})
+
 				// call ComponentMount explicitly with all the params to avoid any ambiguity -- if insertBefore is undefined, pass null
 				var mountedChild = ComponentMount([parentObj, parentEl, parent], childName, aryElement, insertBefore || null, trace);
 			}
 			return childContent;
-		} break; // the combined case
+		} break; // the Object/Array case
 
 		default:
 			console.assert(false, "Invalid arguments. ChildContent needs to be an object, array or string", {childContent:childContent,p1:p1,p2:p2,p3:p3, type:typeof childContent});
@@ -445,9 +490,15 @@ export function ComponentMount($parent, p1, p2, p3, trace) {
 	if (typeof childContent.onPreMount == 'function')
 		childContent.onPreMount()
 
-	const [childObj,  childEl, child ] = ComponentNormalize(childContent);
+	const [childObj,  childEl,  child ] = ComponentNormalize(childContent);
 
 	const isConnecting = parentEl.isConnected && ! childEl.isConnected;
+
+	if (!name)
+		name = ComponentGetName([childObj,  childEl,  child ], {bgnameOnly:true});
+
+	if (name && parentObj && (bgComponent in parentObj) && (name in parentObj))
+		throw new BGError("can not mount this child component because its name is already taken in the parent", {childName:name,parent, child:aryElement})
 
 	if (isConnecting)
 		FireDOMTreeEvent(child, bgePreConnected);
@@ -483,16 +534,15 @@ export function ComponentMount($parent, p1, p2, p3, trace) {
 // This mounts a child that is already a DOM node descendant of $parent into a named child
 // Component Parent/Child Relationships:
 // This function is the definitive location for bulding the parent/child. ComponentMount calls this after it joind the DOM elements
-export function ComponentMountAdd($parent, name, $child, trace) {
+export function ComponentMountAdd($parent, name, $child, trace)
+{
 	const [parentObj, parentEl, parent] = ComponentNormalize($parent);
 	const [childObj,  childEl,  child ] = ComponentNormalize($child);
 
 	// if name was not explicitly passed in, see if we can get it from the content
 	//BGDomLinks
-	if (!name && child && (bgComponentName in child))
-		name = child[bgComponentName];
-	if (!name && child && typeof child.name == 'string')
-		name = child.name;
+	if (!name)
+		name = ComponentGetName([childObj,  childEl,  child ], {bgnameOnly:true});
 
 	// make the obj level parent/child relationship link
 
@@ -659,9 +709,11 @@ export function ComponentUnmount($parent, $child)
 	if (isDisconnecting)
 		FireDOMTreeEvent(child, bgePreDisconnected);
 
-	// remove from the DOM relation
+	// assert that we are dettaching it from the DOM at the correct place for this component
 	//TODO: to do this check right, we need to walk the parent chain to find parentEl b/c it might not be a direct child
 	//console.assert(!!parentEl && !!childEl && childEl.parentNode===parentEl, "ComponentUnmount ill-specified relation to tear down", {parent:parent, name, child:child, namedChild:parent&&parent[name], parentEl, childEl})
+
+	// remove from the DOM relation
 	if (childEl) {
 		childEl.remove();
 	}
@@ -713,7 +765,7 @@ export function ComponentUnmount($parent, $child)
 
 	// remove the BG Node relation from the child if the child supports it
 	if (child[bgComponent] && ("parent" in child))
-		delete child[parent];
+		delete child["parent"];
 
 	lifeCycleChecker && lifeCycleChecker.mark(child, 'onUnmounted');
 	if (typeof child.onUnmount == 'function')
@@ -760,7 +812,7 @@ export function ComponentMakeDOMNode(componentParams, bgComp)
 {
 	// if the ctor params indicated that we are wrapping an existing node, use it, otherwise create a new one
 	var el = componentParams.wrapNode;
-	if (!el && (componentParams.tagName == 'icon' || componentParams.optParams.icon)) {
+	if (!el && (componentParams.tagName == 'icon' )) {
 		var iconName = componentParams.optParams.icon || componentParams.optParams.label;
 		var iconObj = icons[iconName];
 		if (!iconObj) {
@@ -772,13 +824,13 @@ export function ComponentMakeDOMNode(componentParams, bgComp)
 		el = el.firstChild;
 	}
 	else if (!el) {
-		el = document.createElement(componentParams.tagName);
+		el = document.createElement(componentParams.tagName || 'div');
 
 		if (componentParams.idName)
 			el.id = componentParams.idName;
 
-		if (componentParams.className)
-			el.className = componentParams.className.trim().replace(/\s+/g,' ');
+		if (componentParams.className || componentParams.name)
+			el.className = componentParams.getClassNames();
 
 		var isSVG = el instanceof SVGElement;
 
@@ -839,14 +891,24 @@ export function ComponentMakeDOMNode(componentParams, bgComp)
 // TODO: this assumes that $bgComp is not mounted. consider if we need to check and unmount it but I thikn its OK not to b/c
 //       the component family seems to be focused on the children so we usually are destroying a node from its parent with
 //       ComponentDestroyChild.  When we do have a top level node, its natural to unmount it when we are done and may not even destroy it
+//       2022-12 bobg: update: I added the block that unmounts $bgComp if its mounted. Newer DOM interfaces allow manipulating the
+//       DOM tree from the child's perspective and well as from the parent's.  When writing Tabs, I called tab.destroy() and it was
+//       surprising that this function did not unmount it even though it destroyed the contents.
 export function ComponentDestroyDOMNode($bgComp)
 {
 	const [bgCompObj,bgCompEl,bgComp] = ComponentNormalize($bgComp);
 
+	// conditional component tracing
 	if (bgComp.trace) console.log("t> ComponentDestroyDOMNode(%s) details%O", NodeTraceName(bgComp), {bgComp})
 
-	if (bgCompObj) {
+	// unmount it if its connected to the DOM or an unconnected DOM fragment. (so connected would not be a good test)
+	if (bgCompObj && bgCompObj.parent) {
+		ComponentUnmount(bgCompObj.parent, bgCompObj);
+	} else if (bgCompEl && (bgCompEl.parentNode || bgCompEl.parentElement) ) {
+		bgCompEl.remove();
+	}
 
+	if (bgCompObj) {
 		var namedChildren = bgCompObj.mounted.slice();
 		for (var childName of namedChildren) {
 			ComponentDestroyChild(bgCompObj,childName);
@@ -876,7 +938,8 @@ export function ComponentDestroyDOMNode($bgComp)
 //    <parent>  : the parent bgComponent of the relationship
 //    <name>    : the name of the child in the context of the parent or undefined if the child is unnamed
 //    <child>   : if <name> is undefined, the child object must be passed in.
-export function ComponentDestroyChild($parent, nameOrChild) {
+export function ComponentDestroyChild($parent, nameOrChild)
+{
 	if ($parent.trace) console.log("t> ComponentDestroyChild(p:%s,c:%s) details%O", NodeTraceName($parent), NodeTraceName(nameOrChild), {$parent, nameOrChild})
 	const childObj = ComponentUnmount($parent, nameOrChild);
 	if (typeof childObj.destroy == 'function')
@@ -888,7 +951,8 @@ export function ComponentDestroyChild($parent, nameOrChild) {
 
 // usage: <void> ComponentDestroyChildren($parent)
 // Unmounts all children from $parent and call their .destroy() methods to recover their resources
-export function ComponentDestroyChildren($parent) {
+export function ComponentDestroyChildren($parent)
+{
 	const [parentObj, parentEl, parent] = ComponentNormalize($parent);
 	while (parentEl.firstChild)
 		ComponentDestroyChild([parentObj, parentEl, parent], parentEl.lastChild);

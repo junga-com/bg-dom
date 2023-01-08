@@ -1,0 +1,102 @@
+
+.tabs {
+	grid-area: tabs;
+	display: flex;
+	gap: 1.6em;
+	overflow: visible;
+	padding-left: 1em;
+
+	// the purpose of filler is to draw a bottom border from the last tab to the right edge of the Component
+	.filler {
+		display: block;
+		position: relative;
+		top: 1px;
+		width: 150%;  // over 100% so that even with margin-left, and no tabs, it fills the entire width to the right
+		height: 100%;
+		border-bottom: 1px solid var(--cBorders);
+		margin-left: -1em;
+	}
+
+	.possibleDropTarget {
+		&::before {
+			border-left : 5px solid rgb(120,120,240);
+			content: '[';
+		}
+	}
+}
+
+
+.tab {
+	display: inline-flex;
+	flex: 0 1 auto;
+	flex-flow: row nowrap;
+	align-items: center;
+	position: relative;
+	border-block: 1px solid var(--cBorders);
+	height: 100%;
+	background-color: var(--cTabColor);
+	cursor: default;
+	//* display: inline-block;
+	// flex: 0 1 auto;
+	//*
+	//*
+	// position: relative;
+	// border-block: 1px solid var(--cBorders);
+	// height: 100%;
+	// background-color: var(--cTabColor);
+	// cursor: default;
+
+	.contents {
+		// display: inline-block;
+		// position: relative;
+		z-index: 1;
+		overflow: hidden;
+		white-space: nowrap;
+		max-width: 2.5in; // can we make this dynamic based on the width of the tab bar divided by the number of tabs?
+	}
+
+	.close {
+		// vertical-align: middle;
+		// margin-right: 0em;
+		width: 12px;
+		height: 12px;
+		padding-left: 0.5em;
+		z-index: 2;
+		cursor: pointer;
+	}
+
+	&::before,&::after {
+		// display: inline-block;
+		// z-index: 0;
+		position: absolute;
+		content: " ";
+		width: var(--sidesWidth);
+		height: 100%;
+		border: 1px solid var(--cBorders);
+		background-color: var(--cTabColor);
+		border-radius: 3px 3px 0px 0px;
+	}
+	&::before {
+		transform: skewX(calc( -1 * var(--sidesAngle))) translateX(var(--sidesDx));
+		border-right: none;
+		left: calc(-1 * var(--sidesWidth));
+	}
+	&::after {
+		transform: skewX(var(--sidesAngle)) translateX(calc(-1*var(--sidesDx)));
+		border-left: none;
+		right: calc(-1 * var(--sidesWidth));
+	}
+
+	// style the selected tab to reflect that. Changing the bottom border to cBackground removes the bottom border so that
+	// this tab looks connected to the content in the clientArea below. z-index makes the overlapping sides of the tab to
+	// be on top of the ones to either side.
+	&.selected {
+		z-index: 2;
+		border-bottom-color: var(--cBackground);
+		background-color: var(--cBackground);
+		&::before,&::after {
+			border-bottom-color: var(--cBackground);
+			background-color: var(--cBackground);
+		}
+	}
+}

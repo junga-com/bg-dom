@@ -15,6 +15,7 @@ import {
 	ComponentRemoveChild,
 	ComponentConstruct,
 	ComponentGetName,
+	ComponentGet,
 	ComponentMakeDOMNode,
 	ComponentDestroyDOMNode
 }                                from './componentCore';
@@ -164,7 +165,6 @@ export class Component
 		this.optParams = this.componentParams.optParams;
 		this.defaultChildConstructor = componentParams.defaultChildConstructor;
 
-		this.mountedName = ComponentGetMountedName([this, this.el, this], true);
 		if (GCTest) {
 			Component.instFinalChecker.register(this);
 			Component.unCollectedCount++;
@@ -184,6 +184,15 @@ export class Component
 
 		if (this.el && this.componentParams.content)
 			this.mount(this.componentParams.content);
+
+		// if there is a defaultCB and the derived class did not specify a defaultCBName to capture it for its own purposes,
+		// assign it to the onclick attribute -- the most generic of DOM callbacks.
+		//  If a derived class whats to support the default callbacks in a different way, they should specify {defaultCBName:'<someName>'}
+		if (!this.componentParams.defaultCBName.capturing && this.componentParams.callbacks['defaultCB'].length > 0) {
+			this.el.onclick = this.componentParams.getCompositeCB('defaultCB');
+			// consume the defaultCB so that something else does not use it for another purpose (see comment above)
+			this.componentParams.callbacks['defaultCB'] = [];
+		}
 	}
 
 	destroy() {
@@ -192,8 +201,10 @@ export class Component
 		ComponentDestroyDOMNode([this, this.el, this]);
 	}
 
-
-	getParent() { return ComponentGetParent(this); }
+	getParent()      { return ComponentGetParent(this); }
+	toEl()           { return this.el; }
+	getName()        { return ComponentGetName(this); }
+	getMountedName() { return ComponentGetMountedName(this); }
 
 	// These 4 methods are compatible with the same named methods from DOM:Node (older API from Node)
 
@@ -382,6 +393,11 @@ export class Component
 		if (classArray.length>0)
 			this.el.classList.add(...classArray)
 	}
+
+
+	toEl() { return this.el; }
+	getName() { return ComponentGetName(this); }
+	getMountedName() { return ComponentGetMountedName(this); }
 }
 
 // expose some Component... functions as static methods of component
@@ -402,6 +418,8 @@ Component.removeChild    = ComponentRemoveChild;
 Component.construct      = ComponentConstruct;
 Component.getName        = ComponentGetName;
 Component.getMountedName = ComponentGetMountedName;
+Component.get            = ComponentGet;
+Component.wrapNode       = ComponentParams.wrapNode;
 
 lifeCycleChecker && (Component.lifeCycleChecker=lifeCycleChecker)
 

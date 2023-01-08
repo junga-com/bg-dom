@@ -30,14 +30,13 @@ import { Disposables }       from './Disposables'
 // See Also:
 //    ComponentParams : to see what other parameters are accepted by this class constructor
 export class Button {
-	constructor(tagIDClasses,  ...p) {
+	constructor(...p) {
 		var componentParams = new ComponentParams(
 			{
 				tagIDClasses: '$button.btn',
 				paramNames  : 'focusOnMouseClick,icon',
 				defaultCBName   :'onActivatedCB'
 			},
-			tagIDClasses,
 			...p
 		);
 
@@ -124,8 +123,8 @@ export class Button {
 //    ComponentParams : to see what other parameters are accepted by this class constructor
 //    Button : for common behavior to all button hierarchy classes
 export class ToggleButton extends Button {
-	constructor(bgNodeID, ...options) {
-		super({paramNames: 'pressed', defaultCBName:'onStateChangeCB'}, bgNodeID, ...options);
+	constructor(...p) {
+		super({paramNames: 'pressed', defaultCBName:'onStateChangeCB'}, ...p);
 		this.setPressedState(Boolean(this.optParams["pressed"]));
 		this.onStateChangeCB = this.componentParams.getCompositeCB('onStateChangeCB');
 	}

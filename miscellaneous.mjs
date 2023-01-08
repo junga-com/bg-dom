@@ -211,11 +211,6 @@ export class GridDragger extends Dragger
 //		this.el.onpointerdown = (e)=>this.onDragStart(e);
 	}
 
-	onMounted() {
-		console.log("!!! drag onMounted");
-	}
-
-
 	onConnected()
 	{
 		this.gridContainer = this.parent;

@@ -3,7 +3,7 @@ export class BGError extends Error {
 	static logErrorToConsole(e, placeDescription)
 	{
 		if (e instanceof BGError) {
-			console.error("Exception caught in "+placeDescription+"\n%s", e.txtMsg, ...e.context);
+			console.error("Exception caught in "+placeDescription+"\n%s", e.txtMsg, e.stack, ...e.context);
 		}
 		else {
 			console.error("Exception caught in "+placeDescription+"\n%s", ""+e, e);
@@ -20,6 +20,7 @@ export class BGError extends Error {
 		console.warn("BGError: "+txtMsg, ...context)
 	}
 }
+global.BGError = BGError;
 
 // 2022-11 bobg: this is not working in atom under nodejs 12. I can see in the console that process._events has two callbacks for
 //               'unhandledRejection' but neither are called. This one is the second in the list. The other is from atom in index.js

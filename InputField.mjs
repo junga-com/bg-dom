@@ -54,7 +54,6 @@ export class InputField {
 		// most inputCntr are "input" tags but seclectbox is "select"
 		this.inputCntrTag = (this.optParams.inputCntrTag) ? this.optParams.inputCntrTag : "input"
 
-		this.mountedName = Component.getMountedName(this, true);
 		if (GCTest) {
 			Component.instFinalChecker.register(this);
 			Component.unCollectedCount++;

@@ -6,7 +6,7 @@ import { ComponentConstruct } from './componentCore'
 // Note that a space separates the free form textContent with the structured sytax at the start
 // syntax: [name:][$<tagName>][#<idName>][.classNames][ textContent]
 //         where classNames is [className[.className2...]]
-export const reContentIDClasses = /^((?<name>[_a-zA-Z0-9]*):)?([$](?<tagName>[-_a-zA-Z0-9]*))?(#(?<idName>[-_a-zA-Z0-9]*))?(?<className>[.][-!_.a-zA-Z0-9]*)?(\s+|,|$)?((?<icon>icon-[-_a-zA-Z0-9]+)(\s+|,|$))?(?<label>.*)?$/;
+export const reContentIDClasses = /^((?<name>[\]_a-zA-Z0-9\[]*):)?([$](?<tagName>[-_a-zA-Z0-9]*))?(#(?<idName>[-_a-zA-Z0-9]*))?(?<className>[.][-!_.a-zA-Z0-9]*)?(\s+|,|$)?((?<icon>icon-[-_a-zA-Z0-9]+)(\s+|,|$))?(?<label>.*)?$/;
 export const reContentIDClassesClassifiers = {
 	name      : 'top',
 	tagName   : 'top',
@@ -212,7 +212,7 @@ const knownStyleProperties = {
 }
 
 
-//scaps
+//scraps
 //              Element Types
 //                   'object'w/el       as <content> (same as first level, see below)
 //                   'object'w/nodeType as <content> (same as first level, see below)
@@ -431,7 +431,7 @@ const knownStyleProperties = {
 export class ComponentParams
 {
 	// return the tagIDClasses string that represents the <el> passed in.
-	static makeTagIDClasses(el, terseFlag) {
+	static makeTagIDClasses(el, options={}) {
 		if (!el) return '';
 		var tagIDClasses;
 		if (el.nodeName)
@@ -440,7 +440,7 @@ export class ComponentParams
 			tagIDClasses=`\$${el.tagName.toLowerCase()}`;
 		if (el.id)
 			tagIDClasses+=`#${el.id}`;
-		if (!terseFlag && el.classList.length>0)
+		if (!options.terseFlag && el.classList.length>0)
 			tagIDClasses+=`.${Array.from(el.classList).join('.')}`;
 		return tagIDClasses;
 	}
@@ -489,8 +489,10 @@ export class ComponentParams
 				if ('paramNames' in param)
 					for (const name of param.paramNames.split(/\s+/))
 						this.paramNames[name] = true;
-				if ('defaultCBName' in param)
+				if ('defaultCBName' in param) {
 					this.defaultCBName[param.defaultCBName] = true;
+					this.defaultCBName.capturing = true;
+				}
 			}
 		}
 
@@ -548,15 +550,15 @@ export class ComponentParams
 		// its actually called 'style' but it seems like it should be called 'styles' so make an alias so we can use either one.
 		this.style = this.styles;
 
-		// fixup DOMNode callbacks by moving them from this.callbacks to this.props
+		// fixup recognized callbacks by moving them from this.callbacks to this.props or this.optParams
 		for (const cbName in this.callbacks) {
-			if (reDOMCallbackProp.test(cbName)) {
+			if (cbName in this.paramNames)
+				this.optParams[cbName] = this.getCompositeCB(cbName, true);
+			else if (reDOMCallbackProp.test(cbName)) {
 				this.props[cbName] = this.getCompositeCB(cbName, true);
 				delete this.callbacks[cbName];
 			}
 
-			if (cbName in this.paramNames)
-				this.optParams[cbName] = this.getCompositeCB(cbName, true);
 		}
 	}
 
@@ -784,19 +786,12 @@ export class ComponentParams
 		}
 	}
 
-	// // this translates our tagIDClasses syntax into REDOM's construction syntax so we can call el to create the DOM node
-	// // we can probably make the dom el more effieciently than redom's el now but we can optimize that later.
-	// makeREDOMTagString()
-	// {
-	// 	var redomTagStr = this.tagName
-	// 	if (this.idName)
-	// 		redomTagStr += "#"+this.idName;
-	// 	if (this.className) {
-	// 		redomTagStr += "."+this.className.replace(/(^\s+)|(\s+$)/,'').replace(/\s+/g,'.')
-	// 	}
-	//
-	// 	return redomTagStr || '';
-	// }
+
+	getClassNames() {
+		var ret = this.name+' '+this.className;
+		return ret.trim().replace(/\s+/g,' ');
+	}
+
 
 	// return a composite callback that invokes all the callbacks specified in the ComponentParams as the given type/name
 	getCompositeCB(cbName='defaultCB', forceFlag=false)
